@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+# Do not commit raw SoP datasets unless State of Place explicitly authorizes redistribution.
+raw_data/

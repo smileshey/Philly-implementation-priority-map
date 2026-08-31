@@ -1,0 +1,52 @@
+/* Desktop layout deliberately mirrors the existing Seattle Walkability UI. */
+.slider-widget-container { position: absolute; bottom: 40px; left: 20px; z-index: 1002; width: 300px; max-width: 400px; background: rgba(255,255,255,.8); border-radius: 20px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,.15); border: 1px solid rgba(0,0,0,.1); display: flex; flex-direction: column; }
+.slider-widget-header { display:flex; align-items:center; justify-content:space-between; }
+.slider-widget-title { font-weight:bold; font-size:.8rem; }
+.slider-divider { width:100%; height:1px; background:#ddd; margin:10px 0; }
+.slider-content { display:flex; flex-direction:column; gap:.2px; }
+.slider-row { display:flex; align-items:center; margin-bottom:0; }
+.slider-caption { width:110px; text-align:center; margin-right:8px; font-style:italic; font-size:.8rem; }
+.slider-element { flex:1; position:relative; }
+.slider-element input[type="range"] { width:100%; accent-color:#1976d2; }
+.slider-value-label { font-size:.58rem; color:#666; text-align:center; margin-top:-2px; }
+.slider-recalculate-button { width:100%; margin-top:15px; padding:10px; background-color:#4caf50; color:#fff; font-size:1rem; font-weight:bold; border:none; border-radius:5px; cursor:pointer; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,.2); }
+.slider-recalculate-button:hover { background-color:#45a049; }
+.slider-reset-button { width:100%; margin-top:10px; padding:10px; background-color:#f50057; color:#fff; font-size:1rem; font-weight:bold; border:none; border-radius:5px; cursor:pointer; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,.2); }
+.slider-reset-button:hover { background-color:#c51162; }
+.legend-container { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); z-index:1003; padding:10px 14px; background:rgba(255,255,255,.8); border-radius:15px; box-shadow:0 4px 10px rgba(0,0,0,.15); text-align:center; min-width:220px; }
+.legend-title { font-weight:bold; font-size:.72rem; margin-bottom:6px; }
+.legend-gradient { height:10px; border-radius:5px; background:linear-gradient(90deg,#2c7bb6,#ffffbf,#d7191c); }
+.legend-labels { display:flex; justify-content:space-between; font-size:.58rem; color:#555; margin-top:2px; }
+#layerToggleDiv { display:block; position:absolute; bottom:100px; right:20px; z-index:1003; background:rgba(255,255,255,0); padding:10px; border-radius:5px; }
+.layer-toggle-card { display:flex; flex-direction:column; gap:7px; padding:12px; border-radius:12px; background:rgba(255,255,255,.86); box-shadow:0 4px 10px rgba(0,0,0,.15); font-size:.72rem; }
+.layer-toggle-card label { display:flex; align-items:center; gap:6px; }
+.navbar-container.desktop { width:45%; max-width:600px; min-width:400px; border-radius:0 0 20px 0; justify-content:space-between; padding:15px; display:flex; align-items:center; }
+.navbar-title.desktop { font-size:1.4rem; font-weight:bold; color:#000; flex-grow:1; text-align:left; }
+.navbar-links-container { display:flex; gap:15px; margin-left:auto; align-items:center; }
+.navbar-link.desktop { color:grey; text-transform:uppercase; font-weight:bold; font-size:.7rem; background:none; border:none; cursor:pointer; padding:5px 10px; transition:background-color .3s,color .3s; }
+.navbar-link.desktop:hover { background-color:rgba(0,0,0,.1); color:#0072bc; }
+.top-neighborhoods-list { display:flex; flex-direction:column; gap:.15rem; margin-top:8px; }
+.top-neighborhood-row { display:flex; justify-content:space-between; padding:2px 0; font-size:.65rem; }
+.rank1 { font-size:.72rem; font-weight:bold; color:black; }
+.rank2,.rank3 { font-size:.65rem; font-weight:bold; color:black; }
+.rankDefault { font-size:.65rem; font-weight:normal; color:black; }
+.source-status { display:flex; gap:5px; }
+.status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#aaa; }
+.status-dot.ready { background:#4caf50; }
+.status-dot.failed { background:#f50057; }
+.status-dot.loading { background:#ffc107; }
+.info-panel { position:absolute; top:70px; left:20px; z-index:1004; width:390px; max-width:calc(100vw - 70px); padding:18px 22px; border-radius:14px; background:rgba(255,255,255,.94); box-shadow:0 6px 22px rgba(0,0,0,.22); font-size:.82rem; line-height:1.45; }
+.info-panel h2 { margin:0 28px 8px 0; font-size:1.05rem; }
+.info-panel p { margin:8px 0 0; }
+.info-panel ul { margin:8px 0; padding-left:20px; }
+.info-panel-close { position:absolute; top:8px; right:10px; border:0; background:transparent; font-size:1.5rem; line-height:1; cursor:pointer; color:#555; }
+@media (max-width: 800px) {
+  .navbar-container.desktop { width:calc(100% - 20px); min-width:0; max-width:none; border-radius:0 0 16px 0; }
+  .navbar-title.desktop { font-size:1rem; }
+  .navbar-link.desktop { font-size:.55rem; padding:4px; }
+  .slider-widget-container { width:270px; bottom:20px; left:10px; max-height:55vh; overflow:auto; }
+  .legend-container { display:none; }
+  #layerToggleDiv { right:6px; bottom:55px; }
+  .info-panel { top:58px; left:10px; }
+}
+.rank-marker { width:22px; height:22px; border:2px solid #000; border-radius:50%; background:#fff; align-items:center; justify-content:center; font-size:12px; font-weight:bold; box-shadow:0 1px 3px rgba(0,0,0,.25); }
