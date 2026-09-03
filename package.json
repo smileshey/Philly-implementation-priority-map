@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:pages": "tsc -b && vite build --base=/Philly-implementation-priority-map/",
     "preview": "vite preview",
     "prepare:data": "node scripts/prepare_implementation_data.mjs"
   },
