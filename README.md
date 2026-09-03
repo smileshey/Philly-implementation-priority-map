@@ -55,6 +55,7 @@ The public sources are downloaded and spatially joined ahead of time. The PennDO
 ## Run
 
 ```bash
+nvm install
 nvm use
 npm install
 npm run dev
@@ -62,7 +63,7 @@ npm run dev
 
 Then open the Vite URL shown in the terminal.
 
-Node 20 or newer is required. On this machine, the included `.nvmrc` selects the compatible system-installed Node 20 instead of the older nvm default.
+Node 20 or newer is required. The included `.nvmrc` selects Node 20 consistently for local development and GitHub Actions.
 
 ## Deploy on GitHub Pages
 
@@ -72,7 +73,7 @@ Pushes to `main` automatically build and deploy the site through `.github/workfl
 https://smileshey.github.io/Philly-implementation-priority-map/
 ```
 
-For the first deployment, open the GitHub repository and select **Settings → Pages → Build and deployment → Source: GitHub Actions**. Then push to `main` or run the workflow manually from the **Actions** tab.
+Push to `main` or run the workflow manually from the **Actions** tab. The deployment workflow configures Pages automatically; if **Settings → Pages** only shows **Add domain**, no additional source selection is required.
 
 Planner reviews remain in each viewer's browser storage; GitHub Pages does not provide a shared review database.
 
