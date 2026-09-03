@@ -12,21 +12,22 @@ This is a deliberately small adaptation of the **Seattle Walkability Index** UI 
 - Bottom-right layer controls
 - Top-five ranked locations displayed on the map
 - Clickable map features with a compact popup
+- Distinct, clickable capital-project and environmental-site symbols
 
 The major technical change is replacing ArcGIS Online / ArcGIS JS with **MapLibre GL JS**, so the prototype can be published as a normal open-source web app without an ArcGIS account.
 
 ## Prototype logic
 
-Each State of Place street segment gets four signals:
+Each State of Place street segment gets a need score and a distinct feasibility score:
 
 1. **SoP Need** — `1 - SoPIndex8Norm / 100`
-2. **Vision Zero** — segment overlaps the 2025 Philadelphia High Injury Network (25 m tolerance)
-3. **Capital Projects** — segment overlaps a PennDOT Transportation Improvement Project (50 m tolerance)
-4. **Environmental Context** — continuous proximity score to an EPA Brownfield or Superfund site within 500 m
+2. **Policy Alignment** — segment overlaps the 2025 Philadelphia High Injury Network (82 ft tolerance)
+3. **Capital Readiness** — segment overlaps a PennDOT Transportation Improvement Project (164 ft tolerance)
+4. **Environmental Fit** — Brownfield proximity is an opportunity and Superfund proximity is a constraint within 1,640 ft
 
-The four slider values are weights. Clicking **Recalculate** recomputes a 0–100 implementation-priority score and updates the top five segments.
+The three implementation-context signals first produce a 0–100 **feasibility** score. The selected need and feasibility weights then produce the 0–100 **priority** score. Clicking **Recalculate** updates that priority and the top-five segments.
 
-This is intentionally a prototype score, not a final causal or eligibility model. The next iteration should validate the distance thresholds and distinguish true funding eligibility from contextual proximity.
+Each segment also receives a deterministic prototype recommendation with a type, action, rationale, impact, implementation effort, cost band, timing band, and evidence codes. These rules turn the sponsor's suggested 1–3 hammer / 1–3 dollar / timing concept into a discussion-ready interface. They are screening aids—not final engineering recommendations, funding eligibility determinations, or causal estimates.
 
 ## Public sources
 
@@ -36,7 +37,7 @@ This is intentionally a prototype score, not a final causal or eligibility model
 - U.S. EPA: Brownfields and Superfund point layers
 - Basemap: OpenStreetMap
 
-The public sources are downloaded and spatially joined ahead of time. The browser loads local, precomputed GeoJSON and only handles rendering, weighting, ranking, and interaction. This keeps the map responsive and makes a team demo independent of third-party API latency.
+The public sources are downloaded and spatially joined ahead of time. The PennDOT ArcGIS service is queried by object ID in pages and then grouped by project ID, avoiding the service's per-request record limit. The browser loads local, precomputed GeoJSON and only handles rendering, weighting, ranking, and interaction. This keeps the map responsive and makes a team demo independent of third-party API latency.
 
 ## Run
 
@@ -69,16 +70,16 @@ The original practicum GeoJSON carries hundreds of fields per segment. The brows
 python scripts/prepare_sop_data.py /path/to/septa_blocks.geojson public/data/sop_segments.geojson
 ```
 
-The supplied file is reduced from roughly 46 MB to a much smaller client layer.
+The supplied file is reduced from roughly 46 MB to a much smaller client layer. During implementation-data preparation, the script checks that segment IDs are unique, geometries are lines, and the six retained normalized fields contain numeric values from 0–100. This is a schema/range check; the project still needs the official State of Place codebook to validate each field's substantive meaning.
 
 ## Publishing / licensing note
 
 The **application code** can be open-source. Before committing the supplied State of Place data to a public repository, confirm with State of Place that redistribution of that dataset is permitted. A safe deployment pattern is to keep the code public and inject the SoP GeoJSON during build/deployment if the data itself is restricted.
 
-## Next development step
+## Recommendation method
 
-Once the UI and spatial joins are behaving correctly, replace the simple weighted score with structured implementation signals such as eligibility, timing, project status, estimated cost, and funding-program fit. That is where an LLM/RAG layer can later add value for extracting rules from funding and planning documents.
+`scripts/prepare_implementation_data.mjs` uses transparent, versioned rules (`prototype-rule-v1`) to select a primary action. HIN and capital-project matches favor safety/project coordination; a Brownfield match favors redevelopment coordination; a Superfund match adds due diligence and raises the estimated effort, cost, and timing. A segment with no implementation trigger receives either a feasibility-study or monitoring recommendation based on need. All underlying evidence and source links are exposed in the segment popup.
 
 ## v0.3 performance update
 
-The initial prototypes performed spatial comparisons in the browser. Version 0.3 moves those calculations into `scripts/prepare_implementation_data.mjs` and serves the resulting signal fields directly. The 25 m / 50 m line proximity and 500 m environmental proximity calculations remain prototype-grade approximations using a local planar conversion appropriate for Philadelphia; validate those thresholds before treating the score as a production model.
+The initial prototypes performed spatial comparisons in the browser. Version 0.3 moves those calculations into `scripts/prepare_implementation_data.mjs` and serves the resulting signal fields directly. Geometry calculations remain metric internally and are converted to American units for stored/displayed distances: 82 ft HIN, 164 ft capital, and 1,640 ft environmental thresholds. The local planar calculations are prototype-grade approximations appropriate for Philadelphia; validate the thresholds before treating the score as a production model.

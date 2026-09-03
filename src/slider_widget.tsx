@@ -66,14 +66,14 @@ export default function SliderWidget({
       <div className="slider-divider" />
       <div className="slider-content">
         <SliderRow label="SoP Need" value={weights.need} onChange={(v) => update('need', v)} />
-        <SliderRow label="Vision Zero" value={weights.visionZero} onChange={(v) => update('visionZero', v)} />
-        <SliderRow label="Capital Projects" value={weights.capital} onChange={(v) => update('capital', v)} />
-        <SliderRow label="Environmental" value={weights.environmental} onChange={(v) => update('environmental', v)} />
+        <SliderRow label="Policy Alignment" value={weights.visionZero} onChange={(v) => update('visionZero', v)} />
+        <SliderRow label="Capital Readiness" value={weights.capital} onChange={(v) => update('capital', v)} />
+        <SliderRow label="Environmental Fit" value={weights.environmental} onChange={(v) => update('environmental', v)} />
       </div>
       <button className="slider-recalculate-button" onClick={onRecalculate}>Recalculate</button>
       <button className="slider-reset-button" onClick={onReset}>Reset</button>
       <div className="slider-divider" />
-      <div className="slider-widget-title">Top implementation opportunities</div>
+      <div className="slider-widget-title">Top implementation priorities</div>
       <TopSegments segments={top} />
     </div>
   );

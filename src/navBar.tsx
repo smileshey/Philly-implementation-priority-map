@@ -15,7 +15,7 @@ export default function BasicMenu({
         <button className="navbar-link desktop" type="button" onClick={onData}>Data</button>
         <a
           className="navbar-link desktop"
-          href="https://github.com/smileshey/Seattle-Walkability-Index"
+          href="https://github.com/smileshey/Philly-implementation-priority-map"
           target="_blank"
           rel="noreferrer"
         >

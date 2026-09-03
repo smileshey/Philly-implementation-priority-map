@@ -19,19 +19,17 @@ const SOP_PATH = resolve(DATA_DIR, 'sop_segments.geojson');
 const HIN_URL =
   'https://hub.arcgis.com/api/v3/datasets/7e416319784a463fa0d8b528d7ccf511_0/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1';
 
-const CAPITAL_URL =
-  'https://mapservices.pasda.psu.edu/server/rest/services/pasda/PennDOT/MapServer/26/query?' +
-  new URLSearchParams({
-    where: '1=1',
-    geometry: '-75.30,39.85,-74.95,40.15',
-    geometryType: 'esriGeometryEnvelope',
-    inSR: '4326',
-    spatialRel: 'esriSpatialRelIntersects',
-    outFields: 'PROJECT_ID,PROJECT_TI,PROJECT_IM,PUBLIC_NAR,EST_CONSTR,CURRENT_CO,UNDER_CONS,FUTURE_DEV,IN_DEVELOP,STREET_NAM',
-    returnGeometry: 'true',
-    outSR: '4326',
-    f: 'geojson'
-  }).toString();
+const CAPITAL_ENDPOINT =
+  'https://mapservices.pasda.psu.edu/server/rest/services/pasda/PennDOT/MapServer/26/query';
+const CAPITAL_FIELDS =
+  'PROJECT_ID,PROJECT_TI,PROJECT_IM,PUBLIC_NAR,EST_CONSTR,CURRENT_CO,UNDER_CONS,FUTURE_DEV,IN_DEVELOP,STREET_NAM';
+const CAPITAL_AREA_PARAMS = {
+  where: '1=1',
+  geometry: '-75.30,39.85,-74.95,40.15',
+  geometryType: 'esriGeometryEnvelope',
+  inSR: '4326',
+  spatialRel: 'esriSpatialRelIntersects'
+};
 
 const EPA_BASE = 'https://geopub.epa.gov/ArcGIS/rest/services/EMEF/efpoints/MapServer';
 const epaUrl = (layer) => `${EPA_BASE}/${layer}/query?` + new URLSearchParams({
@@ -44,7 +42,12 @@ const epaUrl = (layer) => `${EPA_BASE}/${layer}/query?` + new URLSearchParams({
 
 const METERS_PER_DEG_LAT = 110_540;
 const METERS_PER_DEG_LON = 85_300;
+const FEET_PER_METER = 3.28084;
+const HIN_DISTANCE_METERS = 25;
+const CAPITAL_DISTANCE_METERS = 50;
+const ENVIRONMENTAL_DISTANCE_METERS = 500;
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
+const metersToFeet = (value) => value == null ? null : Math.round(value * FEET_PER_METER);
 
 async function fetchGeoJSON(label, url) {
   process.stdout.write(`Downloading ${label}... `);
@@ -54,6 +57,91 @@ async function fetchGeoJSON(label, url) {
   if (data.error) throw new Error(`${label}: ${JSON.stringify(data.error)}`);
   console.log(`${data.features?.length ?? 0} features`);
   return data;
+}
+
+async function fetchCapitalProjects() {
+  process.stdout.write('Downloading capital-project IDs... ');
+  const idUrl = `${CAPITAL_ENDPOINT}?${new URLSearchParams({
+    ...CAPITAL_AREA_PARAMS,
+    returnIdsOnly: 'true',
+    f: 'json'
+  })}`;
+  const idResponse = await fetch(idUrl);
+  if (!idResponse.ok) throw new Error(`Capital project IDs: ${idResponse.status} ${idResponse.statusText}`);
+  const idData = await idResponse.json();
+  if (idData.error) throw new Error(`Capital project IDs: ${JSON.stringify(idData.error)}`);
+  const objectIds = [...(idData.objectIds ?? [])].sort((a, b) => a - b);
+  console.log(`${objectIds.length} records`);
+
+  const features = [];
+  const pageSize = 500;
+  for (let start = 0; start < objectIds.length; start += pageSize) {
+    const ids = objectIds.slice(start, start + pageSize);
+    const pageParameters = new URLSearchParams({
+      objectIds: ids.join(','),
+      outFields: CAPITAL_FIELDS,
+      returnGeometry: 'true',
+      outSR: '4326',
+      f: 'geojson'
+    });
+    const response = await fetch(CAPITAL_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: pageParameters
+    });
+    if (!response.ok) throw new Error(`Capital project page ${start / pageSize + 1}: ${response.status} ${response.statusText}`);
+    const page = await response.json();
+    if (page.error) throw new Error(`Capital project page ${start / pageSize + 1}: ${JSON.stringify(page.error)}`);
+    features.push(...(page.features ?? []));
+    process.stdout.write(`  ${Math.min(start + ids.length, objectIds.length)}/${objectIds.length}\r`);
+  }
+  console.log(`Downloaded ${features.length} capital-project line records.`);
+  if (features.length !== objectIds.length) {
+    throw new Error(`Capital project pagination incomplete: expected ${objectIds.length}, received ${features.length}`);
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function groupCapitalProjects(collection) {
+  const projects = new Map();
+  for (const feature of collection.features) {
+    if (!feature.geometry) continue;
+    const properties = feature.properties ?? {};
+    const key = String(properties.PROJECT_ID ?? properties.PROJECT_TI ?? feature.id ?? projects.size);
+    const parts = feature.geometry.type === 'MultiLineString'
+      ? feature.geometry.coordinates
+      : feature.geometry.type === 'LineString' ? [feature.geometry.coordinates] : [];
+    if (!parts.length) continue;
+    const existing = projects.get(key);
+    if (existing) existing.geometry.coordinates.push(...parts);
+    else projects.set(key, {
+      type: 'Feature',
+      properties,
+      geometry: { type: 'MultiLineString', coordinates: [...parts] }
+    });
+  }
+  return { type: 'FeatureCollection', features: [...projects.values()] };
+}
+
+function validateSop(sop) {
+  if (sop.type !== 'FeatureCollection' || !Array.isArray(sop.features) || !sop.features.length) {
+    throw new Error('SoP input must be a non-empty GeoJSON FeatureCollection.');
+  }
+  const ids = new Set();
+  for (const [index, feature] of sop.features.entries()) {
+    if (feature.geometry?.type !== 'LineString') throw new Error(`SoP feature ${index} is not a LineString.`);
+    const properties = feature.properties ?? {};
+    const id = String(properties.location_id ?? '');
+    if (!id || ids.has(id)) throw new Error(`SoP feature ${index} has a missing or duplicate location_id.`);
+    ids.add(id);
+    for (const field of ['SoPIndex8Norm', 'PEDS5Norm', 'SAFENorm', 'TRAFFIC6Norm', 'CONN7Norm', 'DENS3Norm']) {
+      const value = Number(properties[field]);
+      if (!Number.isFinite(value) || value < -1e-8 || value > 100 + 1e-8) {
+        throw new Error(`SoP feature ${id} has invalid ${field}: ${properties[field]}`);
+      }
+    }
+  }
+  console.log(`Validated ${sop.features.length} unique SoP LineStrings and normalized fields on a 0-100 range.`);
 }
 
 function bbox(feature) {
@@ -161,7 +249,7 @@ function nearestLine(segment, index, threshold) {
     const distance = lineDistance(segment.geometry, item.feature.geometry, threshold);
     if (distance < nearest) { nearest = distance; match = item.feature; }
   }
-  return { signal: nearest <= threshold ? 1 : 0, distance: Number.isFinite(nearest) ? Math.round(nearest) : null, match };
+  return { signal: nearest <= threshold ? 1 : 0, distance: Number.isFinite(nearest) ? nearest : null, match };
 }
 
 function nearestSite(segment, index, maxDistance) {
@@ -172,8 +260,75 @@ function nearestSite(segment, index, maxDistance) {
   }
   return {
     signal: nearest <= maxDistance ? clamp01(1 - nearest / maxDistance) : 0,
-    distance: Number.isFinite(nearest) ? Math.round(nearest) : null,
+    distance: Number.isFinite(nearest) ? nearest : null,
     match
+  };
+}
+
+function buildRecommendation(properties) {
+  const evidence = ['sop_need'];
+  if (properties.hin_signal > 0) evidence.push('vision_zero_hin');
+  if (properties.capital_signal > 0) evidence.push('capital_project');
+  if (properties.brownfield_signal > 0.05) evidence.push('brownfield_opportunity');
+  if (properties.superfund_signal > 0.05) evidence.push('superfund_constraint');
+
+  let type = 'feasibility_study';
+  let title = 'Develop a corridor feasibility study';
+  let action = 'Confirm the segment-level need, define a feasible improvement concept, and identify an implementation or funding pathway.';
+  let effort = 'medium';
+  let cost = '$';
+  let timing = '1–3 years';
+
+  if (properties.hin_signal > 0 && properties.capital_signal > 0) {
+    type = 'capital_safety_coordination';
+    title = 'Bundle a safety upgrade with the programmed project';
+    action = 'Coordinate with the capital-project owner to incorporate a pedestrian-safety treatment while scope and delivery decisions are active.';
+    effort = 'medium'; cost = '$$'; timing = '1–3 years';
+  } else if (properties.hin_signal > 0) {
+    type = 'vision_zero_project_development';
+    title = 'Advance a Vision Zero safety intervention';
+    action = 'Develop a safety concept and pursue an appropriate Vision Zero or transportation-funding pathway.';
+    effort = 'medium'; cost = '$$'; timing = '1–3 years';
+  } else if (properties.capital_signal > 0) {
+    type = 'capital_scope_coordination';
+    title = 'Coordinate improvements with the capital project';
+    action = 'Contact the project owner to test whether pedestrian improvements can be added to the existing project scope.';
+    effort = 'medium'; cost = '$$'; timing = '1–3 years';
+  } else if (properties.brownfield_signal > 0.05) {
+    type = 'redevelopment_coordination';
+    title = 'Coordinate streetscape and Brownfield redevelopment';
+    action = 'Engage the site and corridor stakeholders to align public-realm improvements with cleanup or redevelopment planning.';
+    effort = 'medium'; cost = '$$'; timing = '3–5 years';
+  } else if (properties.need_score < 0.34) {
+    type = 'monitor';
+    title = 'Monitor for a future implementation opportunity';
+    action = 'Retain the segment in the opportunity pipeline and reassess it when a project, policy, or redevelopment trigger emerges.';
+    effort = 'low'; cost = '$'; timing = '3–5 years';
+  }
+
+  let rationale = `The rule combines a ${(properties.need_score * 100).toFixed(0)}-point need score with the detected implementation evidence.`;
+  if (properties.superfund_signal > 0.05) {
+    action += ' Complete environmental due diligence before committing the concept or schedule.';
+    rationale += ' Nearby Superfund evidence is treated as a constraint that may increase uncertainty, cost, and timing.';
+    effort = 'high'; cost = '$$$'; timing = '3–5 years';
+  } else if (properties.brownfield_signal > 0.05) {
+    rationale += ' Nearby Brownfield evidence is treated as a potential coordination opportunity, not proof of eligibility.';
+  }
+
+  const impact = properties.need_score >= 0.67 || properties.hin_signal > 0
+    ? 'high' : properties.need_score >= 0.34 ? 'medium' : 'low';
+  return {
+    recommendation_id: `REC-${properties.location_id}`,
+    recommendation_type: type,
+    recommendation_title: title,
+    recommendation_action: action,
+    recommendation_rationale: rationale,
+    recommendation_impact: impact,
+    implementation_effort: effort,
+    cost_band: cost,
+    timing_band: timing,
+    recommendation_evidence: evidence.join(','),
+    recommendation_method: 'prototype-rule-v1'
   };
 }
 
@@ -184,41 +339,58 @@ function compact(collection) {
 async function main() {
   await mkdir(DATA_DIR, { recursive: true });
   const sop = JSON.parse(await readFile(SOP_PATH, 'utf8'));
-  const [hin, capital, brownfields, superfund] = await Promise.all([
+  validateSop(sop);
+  const [hin, capitalRecords, brownfields, superfund] = await Promise.all([
     fetchGeoJSON('Vision Zero HIN', HIN_URL),
-    fetchGeoJSON('capital projects', CAPITAL_URL),
+    fetchCapitalProjects(),
     fetchGeoJSON('EPA Brownfields', epaUrl(5)),
     fetchGeoJSON('EPA Superfund', epaUrl(0))
   ]);
+  const capital = groupCapitalProjects(capitalRecords);
+  console.log(`Grouped capital data into ${capital.features.length} unique projects.`);
   const environmental = { type: 'FeatureCollection', features: [
     ...brownfields.features.map((feature) => ({ ...feature, properties: { ...feature.properties, site_type: 'Brownfield' } })),
     ...superfund.features.map((feature) => ({ ...feature, properties: { ...feature.properties, site_type: 'Superfund' } }))
   ] };
   const hinIndex = new GridIndex(hin.features);
   const capitalIndex = new GridIndex(capital.features);
-  const environmentalIndex = new GridIndex(environmental.features);
+  const brownfieldIndex = new GridIndex(brownfields.features);
+  const superfundIndex = new GridIndex(superfund.features);
 
   console.log(`Enriching ${sop.features.length} SoP segments...`);
   const features = sop.features.map((feature) => {
-    const hinMatch = nearestLine(feature, hinIndex, 25);
-    const capitalMatch = nearestLine(feature, capitalIndex, 50);
-    const environmentalMatch = nearestSite(feature, environmentalIndex, 500);
+    const hinMatch = nearestLine(feature, hinIndex, HIN_DISTANCE_METERS);
+    const capitalMatch = nearestLine(feature, capitalIndex, CAPITAL_DISTANCE_METERS);
+    const brownfieldMatch = nearestSite(feature, brownfieldIndex, ENVIRONMENTAL_DISTANCE_METERS);
+    const superfundMatch = nearestSite(feature, superfundIndex, ENVIRONMENTAL_DISTANCE_METERS);
     const capitalProps = capitalMatch.match?.properties ?? {};
-    const siteProps = environmentalMatch.match?.properties ?? {};
+    const brownfieldProps = brownfieldMatch.match?.properties ?? {};
+    const superfundProps = superfundMatch.match?.properties ?? {};
+    const environmentalOpportunity = brownfieldMatch.signal;
+    const environmentalConstraint = superfundMatch.signal;
+    const baseProperties = {
+      ...feature.properties,
+      need_score: clamp01(1 - Number(feature.properties.SoPIndex8Norm ?? 0) / 100),
+      hin_signal: hinMatch.signal,
+      hin_distance_ft: metersToFeet(hinMatch.distance),
+      capital_signal: capitalMatch.signal,
+      capital_distance_ft: metersToFeet(capitalMatch.distance),
+      capital_project_name: capitalProps.PROJECT_TI ?? capitalProps.STREET_NAM ?? null,
+      brownfield_signal: environmentalOpportunity,
+      brownfield_distance_ft: metersToFeet(brownfieldMatch.distance),
+      brownfield_site_name: brownfieldProps.primary_name ?? null,
+      superfund_signal: environmentalConstraint,
+      superfund_distance_ft: metersToFeet(superfundMatch.distance),
+      superfund_site_name: superfundProps.primary_name ?? null,
+      environmental_opportunity_signal: environmentalOpportunity,
+      environmental_constraint_signal: environmentalConstraint,
+      environmental_signal: clamp01(environmentalOpportunity - environmentalConstraint)
+    };
     return {
       ...feature,
       properties: {
-        ...feature.properties,
-        need_score: clamp01(1 - Number(feature.properties.SoPIndex8Norm ?? 0) / 100),
-        hin_signal: hinMatch.signal,
-        hin_distance_m: hinMatch.distance,
-        capital_signal: capitalMatch.signal,
-        capital_distance_m: capitalMatch.distance,
-        capital_project_name: capitalProps.PROJECT_TI ?? capitalProps.STREET_NAM ?? null,
-        environmental_signal: environmentalMatch.signal,
-        environmental_distance_m: environmentalMatch.distance,
-        environmental_site_name: siteProps.primary_name ?? null,
-        environmental_site_type: siteProps.site_type ?? null
+        ...baseProperties,
+        ...buildRecommendation(baseProperties)
       }
     };
   });

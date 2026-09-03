@@ -9,7 +9,7 @@ import BasicMenu from './navBar';
 import SliderWidget from './slider_widget';
 import LayerToggle, { type LayerVisibility } from './layer_toggle';
 import { loadExternalData, loadSopData } from './data';
-import { recalculatePriority, recommendedAction, topSegments } from './scoring';
+import { recalculatePriority, topSegments } from './scoring';
 import { segmentMidpoint } from './geometry';
 import type { DataStatus, ExternalData, SopCollection, Weights } from './types';
 
@@ -20,6 +20,11 @@ const EMPTY_EXTERNAL: ExternalData = {
   capital: { type: 'FeatureCollection', features: [] },
   environmental: { type: 'FeatureCollection', features: [] }
 };
+const SOURCE_URLS = {
+  hin: 'https://hub.arcgis.com/api/v3/datasets/7e416319784a463fa0d8b528d7ccf511_0/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1',
+  capital: 'https://mapservices.pasda.psu.edu/server/rest/services/pasda/PennDOT/MapServer/26',
+  environmental: 'https://geopub.epa.gov/ArcGIS/rest/services/EMEF/efpoints/MapServer'
+};
 
 const escapeHtml = (value: unknown) => String(value ?? '')
   .replaceAll('&', '&amp;')
@@ -27,6 +32,119 @@ const escapeHtml = (value: unknown) => String(value ?? '')
   .replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#039;');
+
+function markerImage(label: string, color: string, shape: 'circle' | 'diamond' | 'triangle'): ImageData {
+  const canvas = document.createElement('canvas');
+  canvas.width = 48;
+  canvas.height = 48;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas is unavailable');
+  context.clearRect(0, 0, 48, 48);
+  context.fillStyle = color;
+  context.strokeStyle = '#ffffff';
+  context.lineWidth = 4;
+  context.beginPath();
+  if (shape === 'circle') context.arc(24, 24, 18, 0, Math.PI * 2);
+  else if (shape === 'diamond') {
+    context.moveTo(24, 3); context.lineTo(45, 24); context.lineTo(24, 45); context.lineTo(3, 24); context.closePath();
+  } else {
+    context.moveTo(24, 3); context.lineTo(45, 43); context.lineTo(3, 43); context.closePath();
+  }
+  context.fill();
+  context.stroke();
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 22px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(label, 24, shape === 'triangle' ? 28 : 24);
+  return context.getImageData(0, 0, 48, 48);
+}
+
+function formatCurrency(value: unknown): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount)
+    : 'Not reported';
+}
+
+function externalPopupHtml(layerId: string, properties: Record<string, unknown>): string {
+  if (layerId.startsWith('capital-')) {
+    const title = properties.PROJECT_TI || properties.STREET_NAM || 'Transportation project';
+    return `<div class="popup-content feature-popup">
+      <div class="popup-kicker capital">Capital project</div>
+      <strong>${escapeHtml(title)}</strong>
+      <dl>
+        <dt>Project ID</dt><dd>${escapeHtml(properties.PROJECT_ID || 'Not reported')}</dd>
+        <dt>Improvement</dt><dd>${escapeHtml(properties.PROJECT_IM || 'Not reported')}</dd>
+        <dt>Description</dt><dd>${escapeHtml(properties.PUBLIC_NAR || 'Not reported')}</dd>
+        <dt>Estimated construction</dt><dd>${formatCurrency(properties.EST_CONSTR)}</dd>
+        <dt>Current cost</dt><dd>${formatCurrency(properties.CURRENT_CO)}</dd>
+        <dt>Status</dt><dd>${properties.UNDER_CONS === 'Y' ? 'Under construction' : properties.IN_DEVELOP === 'Y' ? 'In development' : properties.FUTURE_DEV === 'Y' ? 'Future development' : 'Status not reported'}</dd>
+      </dl>
+    </div>`;
+  }
+
+  const siteType = properties.site_type === 'Superfund' ? 'Superfund' : 'Brownfield';
+  const facilityUrl = String(properties.facility_url ?? '');
+  const safeUrl = facilityUrl.startsWith('https://') ? facilityUrl : '';
+  return `<div class="popup-content feature-popup">
+    <div class="popup-kicker ${siteType.toLowerCase()}">${siteType} site</div>
+    <strong>${escapeHtml(properties.primary_name || 'Unnamed EPA site')}</strong>
+    <dl>
+      <dt>Address</dt><dd>${escapeHtml(properties.location_address || 'Not reported')}</dd>
+      <dt>EPA Registry ID</dt><dd>${escapeHtml(properties.registry_id || 'Not reported')}</dd>
+    </dl>
+    ${safeUrl ? `<a class="popup-source-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">View EPA facility record ↗</a>` : ''}
+  </div>`;
+}
+
+const feet = (value: number | null | undefined) => value == null ? 'distance unavailable' : `${value.toLocaleString()} ft away`;
+const effortSymbols = (effort: string | undefined) => effort === 'high' ? '🔨🔨🔨' : effort === 'medium' ? '🔨🔨' : '🔨';
+
+function segmentPopupHtml(feature: SopCollection['features'][number]): string {
+  const p = feature.properties;
+  const hinEvidence = (p.hin_signal ?? 0) > 0
+    ? `Matches the High Injury Network (${feet(p.hin_distance_ft)})`
+    : 'No High Injury Network match within 82 ft';
+  const capitalEvidence = (p.capital_signal ?? 0) > 0
+    ? `${escapeHtml(p.capital_project_name ?? 'Planned project')} (${feet(p.capital_distance_ft)})`
+    : 'No capital project detected within 164 ft';
+  const brownfieldEvidence = (p.brownfield_signal ?? 0) > 0
+    ? `${escapeHtml(p.brownfield_site_name ?? 'Unnamed Brownfield')} (${feet(p.brownfield_distance_ft)})`
+    : 'None detected within 1,640 ft';
+  const superfundEvidence = (p.superfund_signal ?? 0) > 0
+    ? `${escapeHtml(p.superfund_site_name ?? 'Unnamed Superfund site')} (${feet(p.superfund_distance_ft)})`
+    : 'None detected within 1,640 ft';
+
+  return `<div class="popup-content segment-popup">
+    <div class="popup-kicker recommendation">Prototype recommendation</div>
+    <strong>${escapeHtml(p.recommendation_title ?? 'Implementation opportunity')}</strong>
+    <div class="score-grid">
+      <span>Need <b>${Math.round((p.need_score ?? 0) * 100)}</b></span>
+      <span>Feasibility <b>${Math.round((p.feasibility_score ?? 0) * 100)}</b></span>
+      <span>Priority <b>${Math.round((p.priority_score ?? 0) * 100)}</b></span>
+    </div>
+    <p>${escapeHtml(p.recommendation_action ?? 'Identify a viable implementation pathway.')}</p>
+    <div class="recommendation-badges">
+      <span>Impact: ${escapeHtml(p.recommendation_impact ?? '—')}</span>
+      <span title="Implementation effort">${effortSymbols(p.implementation_effort)} ${escapeHtml(p.implementation_effort ?? '—')}</span>
+      <span>Cost: ${escapeHtml(p.cost_band ?? '—')}</span>
+      <span>Timing: ${escapeHtml(p.timing_band ?? '—')}</span>
+    </div>
+    <p class="recommendation-rationale">${escapeHtml(p.recommendation_rationale ?? '')}</p>
+    <details>
+      <summary>Evidence and sources</summary>
+      <dl>
+        <dt>SoP need</dt><dd>${Math.round((p.need_score ?? 0) * 100)} / 100 · practicum dataset</dd>
+        <dt>Policy alignment</dt><dd>${hinEvidence} · <a href="${SOURCE_URLS.hin}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>Capital readiness</dt><dd>${capitalEvidence} · <a href="${SOURCE_URLS.capital}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>Opportunity</dt><dd>${brownfieldEvidence} · <a href="${SOURCE_URLS.environmental}" target="_blank" rel="noreferrer">EPA source ↗</a></dd>
+        <dt>Constraint</dt><dd>${superfundEvidence} · <a href="${SOURCE_URLS.environmental}" target="_blank" rel="noreferrer">EPA source ↗</a></dd>
+      </dl>
+    </details>
+    <small>Rule-generated screening result (${escapeHtml(p.recommendation_method ?? 'prototype')}); verify before project decisions.</small>
+  </div>`;
+}
 
 function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: ExternalData) {
   if (!map.getSource('sop')) map.addSource('sop', { type: 'geojson', data: sop });
@@ -37,6 +155,9 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
     features: external.environmental.features
   };
   if (!map.getSource('environmental')) map.addSource('environmental', { type: 'geojson', data: environmental });
+  if (!map.hasImage('capital-project-marker')) map.addImage('capital-project-marker', markerImage('C', '#6a1b9a', 'diamond'), { pixelRatio: 2 });
+  if (!map.hasImage('brownfield-marker')) map.addImage('brownfield-marker', markerImage('B', '#ef8a00', 'circle'), { pixelRatio: 2 });
+  if (!map.hasImage('superfund-marker')) map.addImage('superfund-marker', markerImage('S', '#b71c1c', 'triangle'), { pixelRatio: 2 });
 
   if (!map.getLayer('sop-lines')) {
     map.addLayer({
@@ -57,7 +178,20 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
   }
   if (!map.getLayer('hin-lines')) map.addLayer({ id: 'hin-lines', type: 'line', source: 'hin', paint: { 'line-color': '#111', 'line-width': 4, 'line-opacity': 0.65 } });
   if (!map.getLayer('capital-lines')) map.addLayer({ id: 'capital-lines', type: 'line', source: 'capital', paint: { 'line-color': '#6a1b9a', 'line-width': 3, 'line-opacity': 0.7, 'line-dasharray': [2, 1] } });
-  if (!map.getLayer('environmental-points')) map.addLayer({ id: 'environmental-points', type: 'circle', source: 'environmental', paint: { 'circle-radius': 5, 'circle-color': '#ff8f00', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
+  if (!map.getLayer('capital-icons')) map.addLayer({
+    id: 'capital-icons', type: 'symbol', source: 'capital',
+    layout: { 'symbol-placement': 'line-center', 'icon-image': 'capital-project-marker', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 15, 1], 'icon-padding': 8, 'icon-allow-overlap': false }
+  });
+  if (!map.getLayer('brownfield-icons')) map.addLayer({
+    id: 'brownfield-icons', type: 'symbol', source: 'environmental',
+    filter: ['==', ['get', 'site_type'], 'Brownfield'],
+    layout: { 'icon-image': 'brownfield-marker', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.65, 15, 1], 'icon-padding': 7, 'icon-allow-overlap': false }
+  });
+  if (!map.getLayer('superfund-icons')) map.addLayer({
+    id: 'superfund-icons', type: 'symbol', source: 'environmental',
+    filter: ['==', ['get', 'site_type'], 'Superfund'],
+    layout: { 'icon-image': 'superfund-marker', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.75, 15, 1.05], 'icon-allow-overlap': true }
+  });
 }
 
 
@@ -150,8 +284,8 @@ function App() {
     const values: [keyof LayerVisibility, string[]][] = [
       ['sop', ['sop-lines']],
       ['hin', ['hin-lines']],
-      ['capital', ['capital-lines']],
-      ['environmental', ['environmental-points']]
+      ['capital', ['capital-lines', 'capital-icons']],
+      ['environmental', ['brownfield-icons', 'superfund-icons']]
     ];
     values.forEach(([key, layers]) => layers.forEach((id) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', visibility[key] ? 'visible' : 'none')));
     rankMarkersRef.current.forEach((marker) => { marker.getElement().style.display = visibility.sop ? 'flex' : 'none'; });
@@ -161,38 +295,34 @@ function App() {
     const map = mapRef.current;
     if (!map) return;
     const click = (event: maplibregl.MapMouseEvent) => {
-      if (!map.getLayer('sop-lines')) return;
-      const hits = map.queryRenderedFeatures(event.point, { layers: ['sop-lines'] });
+      const interactiveLayers = ['superfund-icons', 'brownfield-icons', 'capital-icons', 'capital-lines', 'sop-lines']
+        .filter((id) => map.getLayer(id));
+      if (!interactiveLayers.length) return;
+      const hits = map.queryRenderedFeatures(event.point, { layers: interactiveLayers });
       const hit = hits[0];
       if (!hit?.properties) return;
+      if (hit.layer.id !== 'sop-lines') {
+        new maplibregl.Popup({ maxWidth: '340px' })
+          .setLngLat(event.lngLat)
+          .setHTML(externalPopupHtml(hit.layer.id, hit.properties))
+          .addTo(map);
+        return;
+      }
       const p = hit.properties;
       const feature = scoredSop?.features.find((item) => item.properties.location_id === p.location_id);
       if (!feature) return;
-      const html = `
-        <div class="popup-content">
-          <strong>Implementation opportunity</strong><br/>
-          <b>Priority:</b> ${Math.round((feature.properties.priority_score ?? 0) * 100)}<br/>
-          <b>SoP need:</b> ${Math.round((feature.properties.need_score ?? 0) * 100)}<br/>
-          <b>Vision Zero:</b> ${(feature.properties.hin_signal ?? 0) > 0 ? 'Yes' : 'No'}<br/>
-          <b>Capital project:</b> ${(feature.properties.capital_signal ?? 0) > 0
-            ? `${escapeHtml(feature.properties.capital_project_name ?? 'Planned project')} (${feature.properties.capital_distance_m ?? 0} m)`
-            : 'None detected within 50 m'}<br/>
-          <b>Environmental context:</b> ${(feature.properties.environmental_signal ?? 0) > 0
-            ? `${escapeHtml(feature.properties.environmental_site_type ?? 'EPA site')}: ${escapeHtml(feature.properties.environmental_site_name ?? 'Unnamed site')} (${feature.properties.environmental_distance_m ?? 0} m)`
-            : 'None detected within 500 m'}<br/>
-          <b>Next step:</b> ${recommendedAction(feature)}
-        </div>`;
-      new maplibregl.Popup().setLngLat(event.lngLat).setHTML(html).addTo(map);
+      new maplibregl.Popup({ maxWidth: '430px' }).setLngLat(event.lngLat).setHTML(segmentPopupHtml(feature)).addTo(map);
+    };
+    const move = (event: maplibregl.MapMouseEvent) => {
+      const layers = ['superfund-icons', 'brownfield-icons', 'capital-icons', 'capital-lines', 'sop-lines']
+        .filter((id) => map.getLayer(id));
+      map.getCanvas().style.cursor = layers.length && map.queryRenderedFeatures(event.point, { layers }).length ? 'pointer' : '';
     };
     map.on('click', click);
-    const enter = () => { map.getCanvas().style.cursor = 'pointer'; };
-    const leave = () => { map.getCanvas().style.cursor = ''; };
-    map.on('mouseenter', 'sop-lines', enter);
-    map.on('mouseleave', 'sop-lines', leave);
+    map.on('mousemove', move);
     return () => {
       map.off('click', click);
-      map.off('mouseenter', 'sop-lines', enter);
-      map.off('mouseleave', 'sop-lines', leave);
+      map.off('mousemove', move);
     };
   }, [scoredSop]);
 
@@ -219,8 +349,8 @@ function App() {
           {infoPanel === 'how' ? (
             <>
               <h2>How implementation priority works</h2>
-              <p>State of Place identifies where street conditions need improvement. The other three signals identify policy, capital-program, and redevelopment context that may make action more timely.</p>
-              <p>Adjust the weights from 0–4 and select <strong>Recalculate</strong>. Scores and the top-five list update on the map; they are screening priorities, not funding awards or final project recommendations.</p>
+              <p><strong>Need</strong> comes from the inverse of the normalized State of Place score. <strong>Feasibility</strong> combines High Injury Network policy alignment, nearby capital-project readiness, Brownfield opportunity, and Superfund constraint.</p>
+              <p>Priority combines need and feasibility using the selected 0–4 weights. Select <strong>Recalculate</strong> to update the scores and top-five list. Click a segment to see its rule-generated action, effort, cost, timing, and evidence.</p>
             </>
           ) : (
             <>
@@ -231,7 +361,7 @@ function App() {
                 <li>PennDOT transportation improvement projects</li>
                 <li>EPA Brownfields and Superfund sites</li>
               </ul>
-              <p>Spatial signals are precomputed locally using 25 m, 50 m, and 500 m prototype thresholds.</p>
+              <p>Spatial signals are precomputed using 82 ft (HIN), 164 ft (capital), and 1,640 ft (environmental) prototype thresholds. Brownfields are opportunities; Superfund sites are constraints.</p>
             </>
           )}
         </section>
