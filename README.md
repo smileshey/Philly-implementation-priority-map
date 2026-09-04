@@ -116,9 +116,9 @@ The **application code** can be open-source. Before committing the supplied Stat
 
 ## Screening method
 
-`scripts/prepare_implementation_data.mjs` uses transparent, versioned screening rules (`prototype-screening-v3`) to select a primary follow-up action. HIN and influenceable capital-project matches favor safety or project-owner review; Brownfields produce low-confidence redevelopment leads; Superfund evidence adds a due-diligence warning. Phase 5 context can surface additional reasons to investigate but is not automatically scored. The rules do not invent a treatment, accessible funding, engineering feasibility, cost, effort, or schedule. Evidence, match methods, limitations, refresh dates, and source links are exposed in the app.
+`scripts/prepare_implementation_data.mjs` uses transparent, versioned screening rules (`prototype-screening-v3`) to select a primary follow-up action. HIN and influenceable capital-project matches favor safety or project-owner review; Brownfields produce low-confidence redevelopment leads; Superfund evidence adds a due-diligence warning. Planning Support Layers can surface additional reasons to investigate but are not automatically scored. The rules do not invent a treatment, accessible funding, engineering feasibility, cost, effort, or schedule. Evidence, match methods, limitations, refresh dates, and source links are exposed in the app.
 
-## Phase 5 context rules
+## Planning Support Layer rules
 
 - Street labels use the nearest named street within approximately 131 ft and a different nearby street as an approximate cross street.
 - Complete Streets matches within 164 ft are policy evidence only.
