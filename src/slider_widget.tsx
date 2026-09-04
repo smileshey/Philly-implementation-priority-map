@@ -96,7 +96,7 @@ export default function SliderWidget({
   return (
     <div className="slider-widget-container">
       <div className="slider-widget-header">
-        <div className="slider-widget-title">Which high-need segments should planners investigate next?</div>
+        <div className="slider-widget-title">What Should Drive Priority?</div>
       </div>
       <div className="slider-divider" />
       <div className="preset-copy">

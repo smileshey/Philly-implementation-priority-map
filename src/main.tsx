@@ -573,15 +573,30 @@ function App() {
       (map.getSource('bike') as GeoJSONSource | undefined)?.setData(external.bike);
       rankMarkersRef.current.forEach((marker) => marker.remove());
       rankMarkersRef.current = top.map((segment, index) => {
-        const element = document.createElement('div');
+        const element = document.createElement('button');
         element.className = 'rank-marker';
+        element.type = 'button';
         element.textContent = String(index + 1);
+        element.title = `Open details for ${segment.properties.display_name ?? 'priority segment'}`;
+        element.setAttribute('aria-label', element.title);
         element.style.display = visibility.sop ? 'flex' : 'none';
-        return new maplibregl.Marker({ element }).setLngLat(segmentMidpoint(segment)).addTo(map);
+        const midpoint = segmentMidpoint(segment);
+        element.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const popup = new maplibregl.Popup({ maxWidth: '460px' })
+            .setLngLat(midpoint)
+            .setHTML(segmentPopupHtml(segment, reviews[segment.properties.location_id]))
+            .addTo(map);
+          popup.getElement()?.querySelector<HTMLButtonElement>('.planner-review-launch')?.addEventListener('click', () => {
+            setSelectedSegment(segment);
+            popup.remove();
+          });
+        });
+        return new maplibregl.Marker({ element }).setLngLat(midpoint).addTo(map);
       });
     };
     if (map.isStyleLoaded()) render(); else map.once('load', render);
-  }, [displayedSop, external, top, visibility]);
+  }, [displayedSop, external, top, visibility, reviews]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -692,12 +707,16 @@ function App() {
     const next = { ...reviews, [review.segmentId]: review };
     setReviews(next);
     savePlannerReviews(next);
-    if (baseSop) setScoredSop(recalculatePriority(
-      baseSop,
-      weights,
-      plannerCoordinationOverrides(next, baseSop),
-      { strategy: activePreset, zoningLens, applyPlannerAdjustments }
-    ));
+    if (baseSop) {
+      const nextScoredSop = recalculatePriority(
+        baseSop,
+        weights,
+        plannerCoordinationOverrides(next, baseSop),
+        { strategy: activePreset, zoningLens, applyPlannerAdjustments }
+      );
+      setScoredSop(nextScoredSop);
+      setSelectedSegment(nextScoredSop.features.find((feature) => feature.properties.location_id === review.segmentId) ?? null);
+    }
   };
 
   return (

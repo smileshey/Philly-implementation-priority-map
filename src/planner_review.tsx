@@ -295,6 +295,17 @@ export default function PlannerReviewPanel({
               <span>Review-adjusted score <strong>{Math.round((selected.properties.review_adjusted_score ?? selected.properties.priority_score ?? 0) * 100)}</strong></span>
             </div>
             <p>Review adjustments are prototype assumptions and are excluded from the default ranking until explicitly enabled.</p>
+            <details className="planner-review-impact">
+              <summary>What changes when this review is saved?</summary>
+              <p>The review is stored only in this browser. Saving does not change Street Need, Safety Urgency, zoning context, or the default public screening score.</p>
+              <ul>
+                <li>Initial discussion sets the review coordination signal to at least 55.</li>
+                <li>A feasible concept sets it to at least 75; accepted scope to at least 90; approved scope and funding to 100.</li>
+                <li>An independent strategy or a not-feasible finding sets the review coordination signal to 0.</li>
+                <li>All other fields document follow-up work but do not change a score.</li>
+              </ul>
+              <p>The adjusted value affects map ranking only when <strong>Use planner-review adjustments</strong> is turned on.</p>
+            </details>
           </section>
           <section>
             <h3>Coordination approach</h3>

@@ -1,4 +1,4 @@
-# Philadelphia SoP Implementation Opportunity Explorer
+# Philadelphia SoP Opportunity Explorer
 
 This is a planning-screening prototype for the Georgia Tech OMSA / State of Place practicum. It helps planners ask: **Which high-need Philadelphia street segments warrant further investigation?** It does not select projects, establish engineering feasibility, guarantee funding, or generate treatments and costs.
 
