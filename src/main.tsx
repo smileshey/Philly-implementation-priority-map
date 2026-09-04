@@ -6,7 +6,7 @@ import './styles/styles.common.css';
 import './styles/navBar.css';
 import './styles/styles.desktop.css';
 import BasicMenu from './navBar';
-import SliderWidget, { type WeightPreset } from './slider_widget';
+import SliderWidget, { type ScreeningFilters, type WeightPreset } from './slider_widget';
 import LayerToggle, { type LayerVisibility } from './layer_toggle';
 import PlannerReviewPanel, {
   loadPlannerReviews,
@@ -14,10 +14,10 @@ import PlannerReviewPanel, {
   type PlannerReview,
   type PlannerReviewStore
 } from './planner_review';
-import { loadExternalData, loadSopData } from './data';
+import { loadDataManifest, loadExternalData, loadSopData } from './data';
 import { baseCoordinationScore, recalculatePriority, topSegments, type CoordinationOverrides } from './scoring';
 import { segmentMidpoint } from './geometry';
-import type { DataStatus, ExternalData, SopCollection, SopFeature, Weights, ZoningLens } from './types';
+import type { DataManifest, ExternalData, SopCollection, SopFeature, Weights, ZoningLens } from './types';
 
 const PRESET_WEIGHTS: Record<WeightPreset, Weights> = {
   need: { need: 4, safety: 1, coordination: 1 },
@@ -26,17 +26,42 @@ const PRESET_WEIGHTS: Record<WeightPreset, Weights> = {
   balanced: { need: 2, safety: 2, coordination: 2 }
 };
 const DEFAULT_WEIGHTS = PRESET_WEIGHTS.balanced;
-const EMPTY_STATUS: DataStatus = { hin: 'loading', capital: 'loading', environmental: 'loading' };
 const EMPTY_EXTERNAL: ExternalData = {
   hin: { type: 'FeatureCollection', features: [] },
   capital: { type: 'FeatureCollection', features: [] },
-  environmental: { type: 'FeatureCollection', features: [] }
+  environmental: { type: 'FeatureCollection', features: [] },
+  completeStreets: { type: 'FeatureCollection', features: [] },
+  development: { type: 'FeatureCollection', features: [] },
+  pwd: { type: 'FeatureCollection', features: [] },
+  transit: { type: 'FeatureCollection', features: [] },
+  crashes: { type: 'FeatureCollection', features: [] },
+  bike: { type: 'FeatureCollection', features: [] }
 };
 const SOURCE_URLS = {
   hin: 'https://hub.arcgis.com/api/v3/datasets/7e416319784a463fa0d8b528d7ccf511_0/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1',
   capital: 'https://mapservices.pasda.psu.edu/server/rest/services/pasda/PennDOT/MapServer/26',
   environmental: 'https://geopub.epa.gov/ArcGIS/rest/services/EMEF/efpoints/MapServer',
-  zoning: 'https://opendataphilly.org/datasets/zoning-base-districts/'
+  zoning: 'https://opendataphilly.org/datasets/zoning-base-districts/',
+  streets: 'https://opendataphilly.org/datasets/streets-composite-layer/',
+  completeStreets: 'https://opendataphilly.org/datasets/complete-streets/',
+  permits: 'https://opendataphilly.org/datasets/licenses-and-inspections-building-and-zoning-permits/',
+  pwd: 'https://water.phila.gov/projects/map/',
+  septa: 'https://opendataphilly.org/datasets/septa-routes-stops-locations/',
+  crashes: 'https://opendataphilly.org/datasets/crashes/',
+  floodplain: 'https://opendataphilly.org/datasets/fema-flood-plain/',
+  historic: 'https://opendataphilly.org/datasets/philadelphia-registered-historic-districts/',
+  bike: 'https://opendataphilly.org/datasets/bike-network/'
+};
+
+const EMPTY_FILTERS: ScreeningFilters = {
+  unreviewed: false,
+  completeStreets: false,
+  futureCapital: false,
+  development: false,
+  pwd: false,
+  transit: false,
+  constraints: false,
+  missingZoning: false
 };
 
 const escapeHtml = (value: unknown) => String(value ?? '')
@@ -180,6 +205,55 @@ function externalPopupHtml(layerId: string, properties: Record<string, unknown>)
     </div>`;
   }
 
+  if (layerId === 'complete-streets-lines') {
+    return `<div class="popup-content feature-popup">
+      <div class="popup-kicker policy">Policy context</div>
+      <strong>${escapeHtml(properties.stname || properties.street_typ || 'Complete Streets segment')}</strong>
+      <dl><dt>Street type</dt><dd>${escapeHtml(properties.street_typ || properties.combined_s || 'Not reported')}</dd>
+      <dt>Road class</dt><dd>${escapeHtml(properties.class1 || 'Not reported')}</dd>
+      <dt>Recommended facility</dt><dd>${escapeHtml(properties.recfacil || properties.bikenetwor || 'Not reported')}</dd>
+      <dt>Sidewalk</dt><dd>${escapeHtml(properties.sidewlk_wd || 'Not reported')}</dd>
+      <dt>Walking zone</dt><dd>${escapeHtml(properties.wlk_zn || 'Not reported')}</dd></dl>
+      <p class="popup-planning-note">Policy evidence only; this record does not establish engineering feasibility.</p>
+    </div>`;
+  }
+  if (layerId === 'development-icons') {
+    return `<div class="popup-content feature-popup"><div class="popup-kicker development">Development lead</div>
+      <strong>${escapeHtml(properties.address || 'Issued development permit')}</strong>
+      <dl><dt>Permit</dt><dd>${escapeHtml(properties.permitnumber || 'Not reported')}</dd>
+      <dt>Work</dt><dd>${escapeHtml(properties.typeofwork || properties.permittype || 'Not reported')}</dd>
+      <dt>Issued</dt><dd>${escapeHtml(formatDate(properties.permitissuedate))}</dd>
+      <dt>Status</dt><dd>${escapeHtml(properties.status || 'Not reported')}</dd></dl>
+      <p class="popup-planning-note">A permit is a coordination lead—not evidence of active construction, accessible funds, or developer participation.</p></div>`;
+  }
+  if (layerId.startsWith('pwd-')) {
+    return `<div class="popup-content feature-popup"><div class="popup-kicker pwd">PWD context</div>
+      <strong>${escapeHtml(properties.project_name || 'PWD project')}</strong>
+      <dl><dt>Status</dt><dd>${escapeHtml(properties.project_status || 'Not reported')}</dd>
+      <dt>Stage</dt><dd>${escapeHtml(properties.context_stage || 'Unknown')}</dd>
+      <dt>Type</dt><dd>${escapeHtml(properties.project_type || 'Not reported')}</dd></dl>
+      <p class="popup-planning-note">Confirm schedule, ownership, scope flexibility, and coordination timing with PWD.</p></div>`;
+  }
+  if (layerId === 'transit-icons') {
+    const routes = Array.isArray(properties.routes) ? properties.routes.join(', ') : properties.routes;
+    return `<div class="popup-content feature-popup"><div class="popup-kicker transit">Transit context</div>
+      <strong>${escapeHtml(properties.stop_name || 'SEPTA stop')}</strong>
+      <dl><dt>Stop ID</dt><dd>${escapeHtml(properties.stop_id || 'Not reported')}</dd><dt>Routes</dt><dd>${escapeHtml(routes || 'Not reported')}</dd></dl>
+      <p class="popup-planning-note">Transit proximity describes access and does not represent a capital commitment.</p></div>`;
+  }
+  if (layerId === 'crash-icons') {
+    return `<div class="popup-content feature-popup"><div class="popup-kicker crashes">Crash evidence</div>
+      <strong>Pedestrian or bicycle crash</strong><dl><dt>Year</dt><dd>${escapeHtml(properties.crash_year || 'Not reported')}</dd>
+      <dt>Fatalities</dt><dd>${escapeHtml(properties.fatal_count || 0)}</dd><dt>Serious injuries</dt><dd>${escapeHtml(properties.susp_serious_inj_count || 0)}</dd></dl>
+      <p class="popup-planning-note">Supporting evidence only; it is not scored separately from the High Injury Network.</p></div>`;
+  }
+  if (layerId === 'bike-lines') {
+    return `<div class="popup-content feature-popup"><div class="popup-kicker bike">Bike-network context</div>
+      <strong>${escapeHtml([properties.st_name, properties.st_type].filter(Boolean).join(' ') || 'Bike facility')}</strong>
+      <dl><dt>Facility</dt><dd>${escapeHtml(properties.bikewaytyp || properties.facityp || properties.grouping || 'Not reported')}</dd></dl>
+      <p class="popup-planning-note">Existing network context only; it does not establish a planned project.</p></div>`;
+  }
+
   const siteType = properties.site_type === 'Superfund' ? 'Superfund' : 'Brownfield';
   const facilityUrl = String(properties.facility_url ?? '');
   const safeUrl = facilityUrl.startsWith('https://') ? facilityUrl : '';
@@ -251,16 +325,23 @@ function segmentPopupHtml(feature: SopFeature, review?: PlannerReview): string {
       : p.zoning_primary_group?.startsWith('Commercial')
         ? 'Screen crossings, curb/loading activity, transit access, and pedestrian circulation.'
         : 'Confirm the site-specific land use and appropriate treatment with planning and engineering staff.';
+  const publicScore = Math.round((p.public_screening_score ?? p.priority_score ?? 0) * 100);
+  const adjustedScore = Math.round((p.review_adjusted_score ?? p.priority_score ?? 0) * 100);
+  const scoreDelta = adjustedScore - publicScore;
+  const constraintEvidence = p.context_review_flags || 'No mapped Phase 5 review flags';
 
   return `<div class="popup-content segment-popup">
-    <div class="popup-kicker recommendation">Screening lead</div>
-    <strong>${escapeHtml(p.recommendation_title ?? 'Implementation opportunity')}</strong>
+    <div class="popup-kicker recommendation">Follow-up candidate</div>
+    <strong>${escapeHtml(p.display_name ?? `Segment ${p.location_id.slice(0, 8)}`)}</strong>
+    <p class="segment-reference">${escapeHtml(p.neighborhood ?? 'Philadelphia')} · ${escapeHtml(p.location_id)}</p>
+    <h4>${escapeHtml(p.recommendation_title ?? 'Investigate this segment further')}</h4>
     <div class="score-grid">
       <span>Need <b>${Math.round((p.need_score ?? 0) * 100)}</b></span>
       <span>Safety <b>${Math.round((p.safety_score ?? p.hin_signal ?? 0) * 100)}</b></span>
       <span>Coordination <b>${Math.round((p.coordination_opportunity_signal ?? 0) * 100)}</b></span>
-      <span>Priority <b>${Math.round((p.priority_score ?? 0) * 100)}</b></span>
+      <span>Screening priority <b>${Math.round((p.priority_score ?? 0) * 100)}</b></span>
     </div>
+    <div class="score-comparison"><span>Public screening <b>${publicScore}</b></span><span>→</span><span>Review-adjusted <b>${adjustedScore}</b></span><small>${scoreDelta === 0 ? 'No review adjustment' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} points from documented review`}</small></div>
     <p>${escapeHtml(p.recommendation_action ?? 'Identify a viable implementation pathway.')}</p>
     <div class="recommendation-badges">
       <span>Impact: ${escapeHtml(p.recommendation_impact ?? '—')}</span>
@@ -290,6 +371,12 @@ function segmentPopupHtml(feature: SopFeature, review?: PlannerReview): string {
         <dt>Capital opportunity</dt><dd>${capitalEvidence} · <a href="${SOURCE_URLS.capital}" target="_blank" rel="noreferrer">source ↗</a></dd>
         <dt>Brownfield lead</dt><dd>${brownfieldEvidence} · <a href="${SOURCE_URLS.environmental}" target="_blank" rel="noreferrer">EPA source ↗</a></dd>
         <dt>Separate constraint</dt><dd>${superfundEvidence} · <a href="${SOURCE_URLS.environmental}" target="_blank" rel="noreferrer">EPA source ↗</a></dd>
+        <dt>Complete Streets</dt><dd>${p.complete_streets_match ? `${escapeHtml(p.complete_streets_type ?? 'Matched')} · ${escapeHtml(p.complete_streets_policy_notes ?? 'policy context available')}` : 'No match'} · <a href="${SOURCE_URLS.completeStreets}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>Development</dt><dd>${p.development_context ? `${p.development_permit_count ?? 0} substantial issued permit(s); nearest at ${feet(p.development_permit_nearest_ft)} · ${escapeHtml(p.development_permit_address ?? '')}` : 'No filtered permit within 250 ft'} · <a href="${SOURCE_URLS.permits}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>PWD project</dt><dd>${p.pwd_project_match ? `${escapeHtml(p.pwd_project_name ?? 'Mapped project')} · ${escapeHtml(p.pwd_project_stage ?? 'unknown stage')} · ${feet(p.pwd_project_distance_ft)}` : 'No match within 328 ft'} · <a href="${SOURCE_URLS.pwd}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>Transit access</dt><dd>${p.transit_stop_count ? `${p.transit_stop_count} stop record(s) within 500 ft; ${escapeHtml(p.nearest_transit_stop_name ?? '')}; routes ${escapeHtml(p.transit_routes || 'not reported')}` : 'No stop within 500 ft'} · <a href="${SOURCE_URLS.septa}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>Crash evidence</dt><dd>${p.crash_count ? `${p.crash_count} pedestrian/bicycle crash(es), including ${p.serious_crash_count ?? 0} fatal or serious-injury crash(es), within 164 ft` : 'No pedestrian/bicycle crash in the mapped period within 164 ft'} · <a href="${SOURCE_URLS.crashes}" target="_blank" rel="noreferrer">source ↗</a></dd>
+        <dt>Review flags</dt><dd>${escapeHtml(constraintEvidence)}</dd>
         <dt>Zoning context</dt><dd>${escapeHtml(p.zoning_primary_group ?? 'Not assessed')} · ${escapeHtml(p.zoning_primary_code ?? 'code unavailable')}</dd>
         <dt>Adjacent mix</dt><dd>${escapeHtml(p.zoning_land_use_mix ?? 'Not assessed')}</dd>
         <dt>Land-use lens</dt><dd>${escapeHtml(ZONING_LENS_LABELS[zoningLens])} · ${zoningScore}</dd>
@@ -299,7 +386,7 @@ function segmentPopupHtml(feature: SopFeature, review?: PlannerReview): string {
       </dl>
     </details>
     <button class="planner-review-launch" type="button">${review ? 'Update planner review' : 'Start planner review'}</button>
-    <small>Rule-generated screening result (${escapeHtml(p.recommendation_method ?? 'prototype')}); it does not confirm engineering feasibility, project scope, funding availability, cost, or schedule.</small>
+    <small>Rule-generated screening result (${escapeHtml(p.recommendation_method ?? 'prototype')}); it does not select a project or confirm engineering feasibility, project scope, funding availability, cost, or schedule.</small>
   </div>`;
 }
 
@@ -307,6 +394,12 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
   if (!map.getSource('sop')) map.addSource('sop', { type: 'geojson', data: sop });
   if (!map.getSource('hin')) map.addSource('hin', { type: 'geojson', data: external.hin });
   if (!map.getSource('capital')) map.addSource('capital', { type: 'geojson', data: external.capital });
+  if (!map.getSource('complete-streets')) map.addSource('complete-streets', { type: 'geojson', data: external.completeStreets });
+  if (!map.getSource('development')) map.addSource('development', { type: 'geojson', data: external.development });
+  if (!map.getSource('pwd')) map.addSource('pwd', { type: 'geojson', data: external.pwd });
+  if (!map.getSource('transit')) map.addSource('transit', { type: 'geojson', data: external.transit });
+  if (!map.getSource('crashes')) map.addSource('crashes', { type: 'geojson', data: external.crashes });
+  if (!map.getSource('bike')) map.addSource('bike', { type: 'geojson', data: external.bike });
   const environmental = {
     type: 'FeatureCollection' as const,
     features: external.environmental.features
@@ -315,6 +408,10 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
   if (!map.hasImage('capital-project-marker')) map.addImage('capital-project-marker', markerImage('C', '#6a1b9a', 'diamond'), { pixelRatio: 2 });
   if (!map.hasImage('brownfield-marker')) map.addImage('brownfield-marker', markerImage('B', '#ef8a00', 'circle'), { pixelRatio: 2 });
   if (!map.hasImage('superfund-marker')) map.addImage('superfund-marker', markerImage('S', '#b71c1c', 'triangle'), { pixelRatio: 2 });
+  if (!map.hasImage('development-marker')) map.addImage('development-marker', markerImage('D', '#ad5a18', 'circle'), { pixelRatio: 2 });
+  if (!map.hasImage('pwd-marker')) map.addImage('pwd-marker', markerImage('W', '#1976a8', 'diamond'), { pixelRatio: 2 });
+  if (!map.hasImage('transit-marker')) map.addImage('transit-marker', markerImage('T', '#253b80', 'circle'), { pixelRatio: 2 });
+  if (!map.hasImage('crash-marker')) map.addImage('crash-marker', markerImage('!', '#b33a3a', 'triangle'), { pixelRatio: 2 });
 
   if (!map.getLayer('sop-lines')) {
     map.addLayer({
@@ -334,11 +431,11 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
     });
   }
   if (!map.getLayer('hin-lines')) map.addLayer({ id: 'hin-lines', type: 'line', source: 'hin', paint: { 'line-color': '#111', 'line-width': 2.5, 'line-opacity': 0.25 } });
-  if (!map.getLayer('capital-lines')) map.addLayer({ id: 'capital-lines', type: 'line', source: 'capital', paint: { 'line-color': '#6a1b9a', 'line-width': 2, 'line-opacity': 0.3, 'line-dasharray': [2, 1] } });
+  if (!map.getLayer('capital-lines')) map.addLayer({ id: 'capital-lines', type: 'line', source: 'capital', paint: { 'line-color': '#6a1b9a', 'line-width': 2, 'line-opacity': 0.15, 'line-dasharray': [2, 1] } });
   if (!map.getLayer('capital-icons')) map.addLayer({
     id: 'capital-icons', type: 'symbol', source: 'capital',
     layout: { 'symbol-placement': 'line-center', 'icon-image': 'capital-project-marker', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 15, 1], 'icon-padding': 8, 'icon-allow-overlap': false },
-    paint: { 'icon-opacity': 0.65 }
+    paint: { 'icon-opacity': 0.4 }
   });
   if (!map.getLayer('brownfield-icons')) map.addLayer({
     id: 'brownfield-icons', type: 'symbol', source: 'environmental',
@@ -350,6 +447,13 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
     filter: ['==', ['get', 'site_type'], 'Superfund'],
     layout: { 'icon-image': 'superfund-marker', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.75, 15, 1.05], 'icon-allow-overlap': true }
   });
+  if (!map.getLayer('complete-streets-lines')) map.addLayer({ id: 'complete-streets-lines', type: 'line', source: 'complete-streets', paint: { 'line-color': '#00897b', 'line-width': 3, 'line-opacity': 0.35, 'line-dasharray': [1.5, 1] } });
+  if (!map.getLayer('development-icons')) map.addLayer({ id: 'development-icons', type: 'symbol', source: 'development', layout: { 'icon-image': 'development-marker', 'icon-size': 0.7, 'icon-padding': 7, 'icon-allow-overlap': false }, paint: { 'icon-opacity': 0.7 } });
+  if (!map.getLayer('pwd-lines')) map.addLayer({ id: 'pwd-lines', type: 'line', source: 'pwd', paint: { 'line-color': '#1976a8', 'line-width': 2.5, 'line-opacity': 0.38 } });
+  if (!map.getLayer('pwd-icons')) map.addLayer({ id: 'pwd-icons', type: 'symbol', source: 'pwd', layout: { 'symbol-placement': 'line-center', 'icon-image': 'pwd-marker', 'icon-size': 0.72, 'icon-padding': 8, 'icon-allow-overlap': false }, paint: { 'icon-opacity': 0.75 } });
+  if (!map.getLayer('transit-icons')) map.addLayer({ id: 'transit-icons', type: 'symbol', source: 'transit', layout: { 'icon-image': 'transit-marker', 'icon-size': 0.6, 'icon-padding': 5, 'icon-allow-overlap': false }, paint: { 'icon-opacity': 0.75 } });
+  if (!map.getLayer('crash-icons')) map.addLayer({ id: 'crash-icons', type: 'symbol', source: 'crashes', layout: { 'icon-image': 'crash-marker', 'icon-size': 0.52, 'icon-padding': 4, 'icon-allow-overlap': false }, paint: { 'icon-opacity': 0.62 } });
+  if (!map.getLayer('bike-lines')) map.addLayer({ id: 'bike-lines', type: 'line', source: 'bike', paint: { 'line-color': '#3f8d4e', 'line-width': 2, 'line-opacity': 0.38, 'line-dasharray': [2, 1] } });
 }
 
 function applyLayerVisibility(map: MapLibreMap, visibility: LayerVisibility) {
@@ -357,15 +461,34 @@ function applyLayerVisibility(map: MapLibreMap, visibility: LayerVisibility) {
     ['sop', ['sop-lines']],
     ['hin', ['hin-lines']],
     ['capital', ['capital-lines', 'capital-icons']],
-    ['environmental', ['brownfield-icons', 'superfund-icons']]
+    ['environmental', ['brownfield-icons', 'superfund-icons']],
+    ['completeStreets', ['complete-streets-lines']],
+    ['development', ['development-icons']],
+    ['pwd', ['pwd-lines', 'pwd-icons']],
+    ['transit', ['transit-icons']],
+    ['crashes', ['crash-icons']],
+    ['bike', ['bike-lines']]
   ];
   values.forEach(([key, layers]) => layers.forEach((id) => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility[key] ? 'visible' : 'none');
   }));
 }
 
-
-
+function filterSegments(sop: SopCollection, filters: ScreeningFilters, reviews: PlannerReviewStore): SopCollection {
+  return {
+    ...sop,
+    features: sop.features.filter(({ properties: p }) =>
+      (!filters.unreviewed || !reviews[p.location_id]) &&
+      (!filters.completeStreets || p.complete_streets_match) &&
+      (!filters.futureCapital || (p.capital_opportunity_signal ?? 0) >= 0.4) &&
+      (!filters.development || p.development_context) &&
+      (!filters.pwd || p.pwd_coordination_context) &&
+      (!filters.transit || (p.transit_stop_count ?? 0) > 0) &&
+      (!filters.constraints || Boolean(p.context_review_flags)) &&
+      (!filters.missingZoning || (p.zoning_sample_count ?? 0) === 0)
+    )
+  };
+}
 
 function App() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -374,16 +497,22 @@ function App() {
   const [baseSop, setBaseSop] = useState<SopCollection | null>(null);
   const [scoredSop, setScoredSop] = useState<SopCollection | null>(null);
   const [external, setExternal] = useState<ExternalData>(EMPTY_EXTERNAL);
-  const [status, setStatus] = useState<DataStatus>(EMPTY_STATUS);
+  const [manifest, setManifest] = useState<DataManifest | null>(null);
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [activePreset, setActivePreset] = useState<WeightPreset | 'custom'>('balanced');
   const [zoningLens, setZoningLens] = useState<ZoningLens>('citywide');
-  const [visibility, setVisibility] = useState<LayerVisibility>({ sop: true, hin: false, capital: false, environmental: false });
+  const [applyPlannerAdjustments, setApplyPlannerAdjustments] = useState(false);
+  const [filters, setFilters] = useState<ScreeningFilters>(EMPTY_FILTERS);
+  const [visibility, setVisibility] = useState<LayerVisibility>({
+    sop: true, hin: false, capital: false, environmental: false,
+    completeStreets: false, development: false, pwd: false, transit: false, crashes: false, bike: false
+  });
   const [infoPanel, setInfoPanel] = useState<'how' | 'data' | null>(null);
   const [reviews, setReviews] = useState<PlannerReviewStore>(() => loadPlannerReviews());
   const [selectedSegment, setSelectedSegment] = useState<SopFeature | null>(null);
 
-  const top = useMemo(() => (scoredSop ? topSegments(scoredSop) : []), [scoredSop]);
+  const displayedSop = useMemo(() => scoredSop ? filterSegments(scoredSop, filters, reviews) : null, [scoredSop, filters, reviews]);
+  const top = useMemo(() => (displayedSop ? topSegments(displayedSop) : []), [displayedSop]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -403,40 +532,45 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [sop, ext] = await Promise.all([loadSopData(), loadExternalData()]);
+      const [sop, ext, sourceManifest] = await Promise.all([loadSopData(), loadExternalData(), loadDataManifest()]);
       if (cancelled) return;
       setBaseSop(sop);
       setExternal(ext);
-      setStatus({ hin: 'ready', capital: 'ready', environmental: 'ready' });
+      setManifest(sourceManifest);
       const storedReviews = loadPlannerReviews();
       setReviews(storedReviews);
       setScoredSop(recalculatePriority(
         sop,
         DEFAULT_WEIGHTS,
         plannerCoordinationOverrides(storedReviews, sop),
-        { strategy: 'balanced', zoningLens: 'citywide' }
+        { strategy: 'balanced', zoningLens: 'citywide', applyPlannerAdjustments: false }
       ));
     }
     load().catch((error) => {
       console.error('Data initialization failed', error);
-      if (!cancelled) setStatus({ hin: 'failed', capital: 'failed', environmental: 'failed' });
     });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !scoredSop) return;
+    if (!map || !displayedSop) return;
     const render = () => {
-      addSourceAndLayers(map, scoredSop, external);
+      addSourceAndLayers(map, displayedSop, external);
       applyLayerVisibility(map, visibility);
-      (map.getSource('sop') as GeoJSONSource | undefined)?.setData(scoredSop);
+      (map.getSource('sop') as GeoJSONSource | undefined)?.setData(displayedSop);
       (map.getSource('hin') as GeoJSONSource | undefined)?.setData(external.hin);
       (map.getSource('capital') as GeoJSONSource | undefined)?.setData(external.capital);
       (map.getSource('environmental') as GeoJSONSource | undefined)?.setData({
         type: 'FeatureCollection',
         features: external.environmental.features
       });
+      (map.getSource('complete-streets') as GeoJSONSource | undefined)?.setData(external.completeStreets);
+      (map.getSource('development') as GeoJSONSource | undefined)?.setData(external.development);
+      (map.getSource('pwd') as GeoJSONSource | undefined)?.setData(external.pwd);
+      (map.getSource('transit') as GeoJSONSource | undefined)?.setData(external.transit);
+      (map.getSource('crashes') as GeoJSONSource | undefined)?.setData(external.crashes);
+      (map.getSource('bike') as GeoJSONSource | undefined)?.setData(external.bike);
       rankMarkersRef.current.forEach((marker) => marker.remove());
       rankMarkersRef.current = top.map((segment, index) => {
         const element = document.createElement('div');
@@ -447,7 +581,7 @@ function App() {
       });
     };
     if (map.isStyleLoaded()) render(); else map.once('load', render);
-  }, [scoredSop, external, top, visibility]);
+  }, [displayedSop, external, top, visibility]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -460,7 +594,7 @@ function App() {
     const map = mapRef.current;
     if (!map) return;
     const click = (event: maplibregl.MapMouseEvent) => {
-      const interactiveLayers = ['superfund-icons', 'brownfield-icons', 'capital-icons', 'capital-lines', 'sop-lines']
+      const interactiveLayers = ['superfund-icons', 'brownfield-icons', 'capital-icons', 'capital-lines', 'complete-streets-lines', 'development-icons', 'pwd-icons', 'pwd-lines', 'transit-icons', 'crash-icons', 'bike-lines', 'sop-lines']
         .filter((id) => map.getLayer(id));
       if (!interactiveLayers.length) return;
       const hits = map.queryRenderedFeatures(event.point, { layers: interactiveLayers });
@@ -474,7 +608,7 @@ function App() {
         return;
       }
       const p = hit.properties;
-      const feature = scoredSop?.features.find((item) => item.properties.location_id === p.location_id);
+      const feature = displayedSop?.features.find((item) => item.properties.location_id === p.location_id);
       if (!feature) return;
       const popup = new maplibregl.Popup({ maxWidth: '460px' })
         .setLngLat(event.lngLat)
@@ -486,7 +620,7 @@ function App() {
       });
     };
     const move = (event: maplibregl.MapMouseEvent) => {
-      const layers = ['superfund-icons', 'brownfield-icons', 'capital-icons', 'capital-lines', 'sop-lines']
+      const layers = ['superfund-icons', 'brownfield-icons', 'capital-icons', 'capital-lines', 'complete-streets-lines', 'development-icons', 'pwd-icons', 'pwd-lines', 'transit-icons', 'crash-icons', 'bike-lines', 'sop-lines']
         .filter((id) => map.getLayer(id));
       map.getCanvas().style.cursor = layers.length && map.queryRenderedFeatures(event.point, { layers }).length ? 'pointer' : '';
     };
@@ -496,7 +630,7 @@ function App() {
       map.off('click', click);
       map.off('mousemove', move);
     };
-  }, [scoredSop, reviews]);
+  }, [displayedSop, reviews]);
 
   const recalculate = () => {
     if (!baseSop) return;
@@ -504,7 +638,7 @@ function App() {
       baseSop,
       weights,
       plannerCoordinationOverrides(reviews, baseSop),
-      { strategy: activePreset, zoningLens }
+      { strategy: activePreset, zoningLens, applyPlannerAdjustments }
     ));
   };
 
@@ -512,11 +646,13 @@ function App() {
     setWeights(DEFAULT_WEIGHTS);
     setActivePreset('balanced');
     setZoningLens('citywide');
+    setApplyPlannerAdjustments(false);
+    setFilters(EMPTY_FILTERS);
     if (baseSop) setScoredSop(recalculatePriority(
       baseSop,
       DEFAULT_WEIGHTS,
       plannerCoordinationOverrides(reviews, baseSop),
-      { strategy: 'balanced', zoningLens: 'citywide' }
+      { strategy: 'balanced', zoningLens: 'citywide', applyPlannerAdjustments: false }
     ));
   };
 
@@ -528,7 +664,7 @@ function App() {
       baseSop,
       nextWeights,
       plannerCoordinationOverrides(reviews, baseSop),
-      { strategy: preset, zoningLens }
+      { strategy: preset, zoningLens, applyPlannerAdjustments }
     ));
   };
 
@@ -538,7 +674,17 @@ function App() {
       baseSop,
       weights,
       plannerCoordinationOverrides(reviews, baseSop),
-      { strategy: activePreset, zoningLens: lens }
+      { strategy: activePreset, zoningLens: lens, applyPlannerAdjustments }
+    ));
+  };
+
+  const applyReviewScoreMode = (apply: boolean) => {
+    setApplyPlannerAdjustments(apply);
+    if (baseSop) setScoredSop(recalculatePriority(
+      baseSop,
+      weights,
+      plannerCoordinationOverrides(reviews, baseSop),
+      { strategy: activePreset, zoningLens, applyPlannerAdjustments: apply }
     ));
   };
 
@@ -550,7 +696,7 @@ function App() {
       baseSop,
       weights,
       plannerCoordinationOverrides(next, baseSop),
-      { strategy: activePreset, zoningLens }
+      { strategy: activePreset, zoningLens, applyPlannerAdjustments }
     ));
   };
 
@@ -566,25 +712,30 @@ function App() {
           <button className="info-panel-close" type="button" aria-label="Close information panel" onClick={() => setInfoPanel(null)}>×</button>
           {infoPanel === 'how' ? (
             <>
-              <h2>How implementation priority works</h2>
-              <p><strong>Street Need</strong> is the inverse normalized State of Place score. <strong>Safety Urgency</strong> identifies a High Injury Network match. <strong>Investment &amp; Coordination Opportunity</strong> reflects influenceable PennDOT projects, capped Brownfield proximity leads, and documented planner engagement.</p>
+              <h2>How the screening tool works</h2>
+              <p className="research-question"><strong>Research question:</strong> How can SoP need scores and public implementation context help Philadelphia planners identify high-need street segments that warrant further investigation?</p>
+              <p><strong>Street Need</strong> is the inverse normalized State of Place score. <strong>Safety Urgency</strong> identifies a High Injury Network match. <strong>Investment &amp; Coordination Opportunity</strong> reflects influenceable PennDOT projects and capped Brownfield proximity leads.</p>
               <p>The presets now use different selection rules: <strong>Need first</strong> ranks need directly; <strong>Safety first</strong> places HIN segments first; <strong>Coordination first</strong> places verified or lifecycle-supported opportunities first; and <strong>Balanced</strong> uses the selected weights. Manual slider changes use a custom weighted score.</p>
               <p>The optional Residential access or Industrial safety lens contributes 15% of the result; the selected preset contributes 85%. Zoning describes land-use context, not engineering feasibility, and industrial segments remain eligible. In-development and future projects can raise coordination; under-construction and completed projects cannot.</p>
-              <p>Superfund proximity remains a separate warning. Treatment, effort, cost, and schedule stay <strong>Not assessed</strong> until a planner or engineer documents them.</p>
+              <p>Complete Streets, filtered permits, PWD, transit, crash, floodplain, historic-district, bicycle-network, and vacancy records provide evidence or review flags. They do not alter the default score. Planner-review adjustments are also off by default and are always shown separately.</p>
+              <p>This tool screens locations for follow-up. It does not select projects, establish engineering feasibility, guarantee funding, or estimate treatments and costs.</p>
             </>
           ) : (
             <>
-              <h2>Prototype data</h2>
-              <ul>
-                <li>State of Place street-segment indicators</li>
-                <li>Philadelphia 2025 High Injury Network</li>
-                <li>PennDOT transportation improvement projects</li>
-                <li>EPA Brownfields and Superfund sites</li>
-                <li>Philadelphia zoning base districts</li>
-              </ul>
-              <p>Spatial signals are precomputed using 82 ft (HIN), 164 ft (capital), and 1,640 ft (environmental) prototype thresholds. Brownfield proximity contributes no more than 20 / 100 until active coordination is verified; Superfund sites do not change the score.</p>
-              <p>Zoning context is sampled on both sides of each street, approximately 66 ft from the centerline. Heavy industrial, port, and airport contexts trigger review rather than automatic exclusion.</p>
-              <p>The review form also tracks potential Philadelphia capital, grant, private-development, SEPTA, and utility pathways. Those entries are leads to investigate—not statements of eligibility, accessible funds, or commitments.</p>
+              <h2>Data sources and limitations</h2>
+              <p>{manifest ? `Prepared ${new Date(manifest.generated_at).toLocaleDateString()} · ${manifest.segment_count.toLocaleString()} SoP segments · method ${manifest.method_version}` : 'Loading source metadata…'}</p>
+              <div className="source-records">
+                {manifest?.sources.map((source) => (
+                  <article className="source-record" key={source.id}>
+                    <div><strong>{source.name}</strong><span className={`source-role ${source.role}`}>{source.role}</span>{source.affects_score && <span className="source-score-chip">affects score</span>}{source.status !== 'ready' && <span className="source-status-chip">{source.status}</span>}</div>
+                    <small>{source.publisher} · {source.segment_match_count?.toLocaleString() ?? 0} segments matched ({source.segment_match_percent ?? 0}%)</small>
+                    <p>{source.method}</p>
+                    <p className="source-limitation">{source.limitations}</p>
+                    {source.url.startsWith('http') && <a href={source.url} target="_blank" rel="noreferrer">Open source ↗</a>}
+                  </article>
+                ))}
+              </div>
+              <p>The supplied SoP file is not attributed to an individual contributor in the repository. Confirm authorship, codebook interpretation, and redistribution permission before publication.</p>
             </>
           )}
         </section>
@@ -596,13 +747,17 @@ function App() {
         onWeights={(nextWeights) => { setWeights(nextWeights); setActivePreset('custom'); }}
         onPreset={applyPreset}
         onZoningLens={applyZoningLens}
+        applyPlannerAdjustments={applyPlannerAdjustments}
+        onApplyPlannerAdjustments={applyReviewScoreMode}
+        filters={filters}
+        onFilters={setFilters}
         onRecalculate={recalculate}
         onReset={reset}
+        resultCount={displayedSop?.features.length ?? 0}
         top={top}
-        status={status}
       />
       <div className="legend-container">
-        <div className="legend-title">Implementation Priority</div>
+        <div className="legend-title">Screening Priority</div>
         <div className="legend-gradient" />
         <div className="legend-labels"><span>Lower</span><span>Higher</span></div>
       </div>

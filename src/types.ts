@@ -1,7 +1,13 @@
-import type { Feature, FeatureCollection, LineString, MultiLineString, Point } from 'geojson';
+import type { Feature, FeatureCollection, LineString, MultiLineString, MultiPolygon, Point, Polygon } from 'geojson';
 
 export type SopProperties = {
   location_id: string;
+  display_name?: string;
+  street_name?: string | null;
+  cross_street?: string | null;
+  neighborhood?: string | null;
+  midpoint_latitude?: number;
+  midpoint_longitude?: number;
   SoPIndex8Norm: number;
   PEDS5Norm: number;
   SAFENorm: number;
@@ -47,7 +53,48 @@ export type SopProperties = {
   zoning_sample_count?: number;
   zoning_context_basis?: string;
   zoning_context_score?: number | null;
+  complete_streets_match?: boolean;
+  complete_streets_distance_ft?: number | null;
+  complete_streets_type?: string | null;
+  complete_streets_class?: string | null;
+  complete_streets_bike_facility?: string | null;
+  complete_streets_sidewalk_width?: string | null;
+  complete_streets_walking_zone?: string | null;
+  complete_streets_policy_notes?: string;
+  development_permit_count?: number;
+  development_permit_nearest_ft?: number | null;
+  development_permit_address?: string | null;
+  development_permit_type?: string | null;
+  development_permit_issue_date?: string | null;
+  development_permit_numbers?: string;
+  development_context?: boolean;
+  pwd_project_match?: boolean;
+  pwd_project_distance_ft?: number | null;
+  pwd_project_name?: string | null;
+  pwd_project_status?: string | null;
+  pwd_project_stage?: 'planned' | 'active' | 'completed' | 'unknown' | null;
+  pwd_coordination_context?: boolean;
+  transit_stop_count?: number;
+  nearest_transit_stop_ft?: number | null;
+  nearest_transit_stop_name?: string | null;
+  transit_routes?: string;
+  crash_count?: number;
+  serious_crash_count?: number;
+  pedestrian_crash_count?: number;
+  bicycle_crash_count?: number;
+  floodplain_review?: boolean;
+  flood_zone?: string | null;
+  historic_review?: boolean;
+  historic_district?: string | null;
+  bike_network_match?: boolean;
+  bike_facility_type?: string | null;
+  vacancy_context_percent?: number | null;
+  context_review_flags?: string;
   priority_base_score?: number;
+  public_screening_score?: number;
+  review_adjusted_score?: number;
+  review_score_delta?: number;
+  planner_adjustment_applied?: boolean;
   priority_strategy?: PriorityStrategy;
   zoning_lens?: ZoningLens;
   feasibility_score?: number;
@@ -69,6 +116,7 @@ export type SopFeature = Feature<LineString, SopProperties>;
 export type SopCollection = FeatureCollection<LineString, SopProperties>;
 export type LineCollection = FeatureCollection<LineString | MultiLineString>;
 export type PointCollection = FeatureCollection<Point>;
+export type PolygonCollection = FeatureCollection<Polygon | MultiPolygon>;
 
 export type Weights = {
   need: number;
@@ -79,16 +127,40 @@ export type Weights = {
 export type PriorityStrategy = 'need' | 'safety' | 'coordination' | 'balanced' | 'custom';
 export type ZoningLens = 'citywide' | 'residential_access' | 'industrial_safety';
 
-export type SourceStatus = 'loading' | 'ready' | 'failed';
-
 export type ExternalData = {
   hin: LineCollection;
   capital: LineCollection;
   environmental: PointCollection;
+  completeStreets: LineCollection;
+  development: PointCollection;
+  pwd: LineCollection;
+  transit: PointCollection;
+  crashes: PointCollection;
+  bike: LineCollection;
 };
 
-export type DataStatus = {
-  hin: SourceStatus;
-  capital: SourceStatus;
-  environmental: SourceStatus;
+export type DataSourceRole = 'need' | 'safety' | 'policy' | 'coordination' | 'context' | 'constraint' | 'identification';
+
+export type DataSourceRecord = {
+  id: string;
+  name: string;
+  publisher: string;
+  url: string;
+  role: DataSourceRole;
+  affects_score: boolean;
+  refreshed_at: string;
+  source_vintage?: string;
+  feature_count?: number;
+  segment_match_count?: number;
+  segment_match_percent?: number;
+  method: string;
+  limitations: string;
+  status: 'ready' | 'unavailable' | 'deferred';
+};
+
+export type DataManifest = {
+  generated_at: string;
+  method_version: string;
+  segment_count: number;
+  sources: DataSourceRecord[];
 };

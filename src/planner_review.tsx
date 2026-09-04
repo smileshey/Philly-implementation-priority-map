@@ -275,8 +275,8 @@ export default function PlannerReviewPanel({
       >
         <header className="planner-review-header">
           <div>
-            <span className="planner-review-kicker">Phase 3 review</span>
-            <h2 id={titleId}>Segment {segmentId.slice(0, 12)}</h2>
+            <span className="planner-review-kicker">Planner follow-up assessment</span>
+            <h2 id={titleId}>{selected.properties.display_name ?? `Segment ${segmentId.slice(0, 12)}`}</h2>
             <p id={descriptionId}>
               Document coordination, feasibility, and verified funding information.
             </p>
@@ -287,6 +287,15 @@ export default function PlannerReviewPanel({
         </header>
 
         <form className="planner-review-form" onSubmit={handleSubmit}>
+          <section className="planner-review-score-summary">
+            <h3>Transparent score comparison</h3>
+            <div>
+              <span>Public screening score <strong>{Math.round((selected.properties.public_screening_score ?? selected.properties.priority_score ?? 0) * 100)}</strong></span>
+              <span aria-hidden="true">→</span>
+              <span>Review-adjusted score <strong>{Math.round((selected.properties.review_adjusted_score ?? selected.properties.priority_score ?? 0) * 100)}</strong></span>
+            </div>
+            <p>Review adjustments are prototype assumptions and are excluded from the default ranking until explicitly enabled.</p>
+          </section>
           <section>
             <h3>Coordination approach</h3>
             <label>

@@ -9,7 +9,7 @@ export default function BasicMenu({
 }) {
   return (
     <div className="navbar-container desktop">
-      <div className="navbar-title desktop">Implementation in Philadelphia</div>
+      <div className="navbar-title desktop">Philadelphia SoP Implementation Opportunity Explorer</div>
       <div className="navbar-links-container">
         <button className="navbar-link desktop" type="button" onClick={onHowItWorks}>How it works</button>
         <button className="navbar-link desktop" type="button" onClick={onData}>Data</button>

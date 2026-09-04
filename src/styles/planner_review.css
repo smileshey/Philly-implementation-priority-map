@@ -78,6 +78,21 @@
   color: #164f4b;
 }
 
+.planner-review-score-summary > div {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 9px;
+  background: #eaf3f0;
+  text-align: center;
+  font-size: 0.72rem;
+}
+
+.planner-review-score-summary span strong { display: block; margin-top: 3px; color: #145a52; font-size: 1.25rem; }
+.planner-review-score-summary p { margin: 8px 0 0; color: #60736f; font-size: 0.68rem; line-height: 1.4; }
+
 .planner-review-form label {
   display: flex;
   flex-direction: column;

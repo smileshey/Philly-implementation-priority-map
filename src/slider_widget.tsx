@@ -1,10 +1,20 @@
 import React from 'react';
-import type { DataStatus, SopFeature, Weights, ZoningLens } from './types';
+import type { SopFeature, Weights, ZoningLens } from './types';
 import TopSegments from './top_segments';
 
 const LABELS = ['None', 'Low', 'Medium', 'High', 'Very high'];
 
 export type WeightPreset = 'need' | 'safety' | 'coordination' | 'balanced';
+export type ScreeningFilters = {
+  unreviewed: boolean;
+  completeStreets: boolean;
+  futureCapital: boolean;
+  development: boolean;
+  pwd: boolean;
+  transit: boolean;
+  constraints: boolean;
+  missingZoning: boolean;
+};
 
 function SliderRow({
   label,
@@ -40,10 +50,6 @@ function SliderRow({
   );
 }
 
-function StatusDot({ status }: { status: 'loading' | 'ready' | 'failed' }) {
-  return <span className={`status-dot ${status}`} title={status} />;
-}
-
 export default function SliderWidget({
   weights,
   activePreset,
@@ -51,10 +57,14 @@ export default function SliderWidget({
   onWeights,
   onPreset,
   onZoningLens,
+  applyPlannerAdjustments,
+  onApplyPlannerAdjustments,
+  filters,
+  onFilters,
   onRecalculate,
   onReset,
-  top,
-  status
+  resultCount,
+  top
 }: {
   weights: Weights;
   activePreset: WeightPreset | 'custom';
@@ -62,10 +72,14 @@ export default function SliderWidget({
   onWeights: (weights: Weights) => void;
   onPreset: (preset: WeightPreset) => void;
   onZoningLens: (lens: ZoningLens) => void;
+  applyPlannerAdjustments: boolean;
+  onApplyPlannerAdjustments: (apply: boolean) => void;
+  filters: ScreeningFilters;
+  onFilters: (filters: ScreeningFilters) => void;
   onRecalculate: () => void;
   onReset: () => void;
+  resultCount: number;
   top: SopFeature[];
-  status: DataStatus;
 }) {
   const update = (field: keyof Weights, value: number) => onWeights({ ...weights, [field]: value });
   const presetButton = (preset: WeightPreset, label: string) => (
@@ -82,12 +96,7 @@ export default function SliderWidget({
   return (
     <div className="slider-widget-container">
       <div className="slider-widget-header">
-        <div className="slider-widget-title">What should drive project priority?</div>
-        <div className="source-status" title="Public data source status">
-          <StatusDot status={status.hin} />
-          <StatusDot status={status.capital} />
-          <StatusDot status={status.environmental} />
-        </div>
+        <div className="slider-widget-title">Which high-need segments should planners investigate next?</div>
       </div>
       <div className="slider-divider" />
       <div className="preset-copy">
@@ -108,6 +117,34 @@ export default function SliderWidget({
         </select>
         <small>Zoning changes context—not engineering feasibility. Industrial areas remain eligible.</small>
       </div>
+      <details className="screening-filters">
+        <summary>Filter follow-up candidates</summary>
+        <div className="screening-filter-grid">
+          {([
+            ['unreviewed', 'Unreviewed'],
+            ['completeStreets', 'Complete Streets match'],
+            ['futureCapital', 'Future capital opportunity'],
+            ['development', 'Development permit'],
+            ['pwd', 'Planned PWD project'],
+            ['transit', 'Transit nearby'],
+            ['constraints', 'Review constraint'],
+            ['missingZoning', 'Zoning not assessed']
+          ] as Array<[keyof ScreeningFilters, string]>).map(([key, label]) => (
+            <label key={key}>
+              <input type="checkbox" checked={filters[key]} onChange={() => onFilters({ ...filters, [key]: !filters[key] })} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        <small>When multiple filters are selected, candidates must meet all of them.</small>
+      </details>
+      <label className="review-score-toggle">
+        <input type="checkbox" checked={applyPlannerAdjustments} onChange={(event) => onApplyPlannerAdjustments(event.target.checked)} />
+        <span>
+          <strong>Use planner-review adjustments</strong>
+          <small>Off by default. Public screening and review-adjusted scores remain visible separately.</small>
+        </span>
+      </label>
       <details className="advanced-weighting">
         <summary>Advanced weighting{activePreset === 'custom' ? ' — Custom active' : ''}</summary>
         <p className="advanced-weighting-help">Moving any slider switches from the preset rule to a custom weighted score.</p>
@@ -137,8 +174,9 @@ export default function SliderWidget({
         <button className="slider-reset-button" onClick={onReset}>Reset</button>
       </div>
       <div className="slider-divider" />
-      <div className="slider-widget-title">Top implementation priorities</div>
+      <div className="candidate-heading"><div className="slider-widget-title">Priority follow-up candidates</div><span>{resultCount.toLocaleString()} shown</span></div>
       <TopSegments segments={top} />
+      {resultCount === 0 && <p className="empty-candidates">No segments meet every selected filter.</p>}
     </div>
   );
 }

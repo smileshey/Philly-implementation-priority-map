@@ -1,6 +1,6 @@
-# Philadelphia State of Place — Implementation Priority Prototype
+# Philadelphia SoP Implementation Opportunity Explorer
 
-This is a deliberately small adaptation of the **Seattle Walkability Index** UI and workflow for the Georgia Tech OMSA / State of Place practicum.
+This is a planning-screening prototype for the Georgia Tech OMSA / State of Place practicum. It helps planners ask: **Which high-need Philadelphia street segments warrant further investigation?** It does not select projects, establish engineering feasibility, guarantee funding, or generate treatments and costs.
 
 ## What is preserved from the Seattle app
 
@@ -37,9 +37,11 @@ An optional **Residential access** or **Industrial safety** zoning lens contribu
 
 The Residential access prototype assigns context values of `1.0` to residential/mixed-use, `0.9` to commercial/mixed-use, `0.2–0.65` to industrial categories, and `0.2–0.8` to special-purpose categories. The Industrial safety lens assigns `1.0` to industrial/mixed-use, `0.6` to commercial, `0.5` to residential, and `0.5–0.9` to special-purpose categories. Mixed frontages use the sampled average. These are discussion assumptions, not adopted policy.
 
-The map opens with only the SoP priority segments visible. The HIN, capital-project, and environmental overlays can be enabled from the layer control; HIN and capital lines are intentionally subdued so the SoP results remain the focal layer.
+The map opens with only the SoP screening segments visible. The HIN, capital-project, environmental, Complete Streets, development-permit, PWD, SEPTA, crash, and bicycle-network overlays can be enabled from the layer control. Context overlays are intentionally subdued so the SoP results remain the focal layer.
 
-Each segment receives a transparent screening action and evidence trail. Treatment feasibility, implementation effort, cost, and timing remain **Not assessed** until a planner or engineer documents them in the segment review. Reviews are stored in that browser with `localStorage`; they can record coordination strategy, engagement, owner/contact, funding leads, treatment, constraints, professional estimates and sources, and reviewer/date. Funding selections are leads to investigate—not eligibility or funding commitments.
+Each segment receives a human-readable street label, a transparent follow-up action, and an evidence trail. Treatment feasibility, implementation effort, cost, and timing remain **Not assessed** until a planner or engineer documents them in the segment review. Reviews are stored in that browser with `localStorage`; they can record coordination strategy, engagement, owner/contact, funding leads, treatment, constraints, professional estimates and sources, and reviewer/date. Funding selections are leads to investigate—not eligibility or funding commitments.
+
+Planner reviews no longer change the default ranking invisibly. The app calculates and displays both a **public screening score** and a **review-adjusted score**. Review adjustments are off by default and can be explicitly enabled. The numerical adjustment rules remain prototype assumptions pending sponsor validation.
 
 ## Public sources
 
@@ -48,9 +50,19 @@ Each segment receives a transparent screening action and evidence trail. Treatme
 - PennDOT: Transportation Improvement Projects, line layer
 - U.S. EPA: Brownfields and Superfund point layers
 - City of Philadelphia: current Zoning Base District polygons
+- City of Philadelphia: Streets Composite and Complete Streets layers
+- City of Philadelphia L&I: filtered, recently issued substantial development permits
+- Philadelphia Water Department: public GSI and active-construction project layers
+- SEPTA: transit stops
+- PennDOT / City of Philadelphia: pedestrian and bicycle crash records
+- FEMA / City of Philadelphia: 2023 floodplain polygons
+- Philadelphia Historical Commission: registered historic districts
+- City of Philadelphia: bike network and block-level vacancy indicators
 - Basemap: CARTO Positron using OpenStreetMap data
 
-The public sources are downloaded and spatially joined ahead of time. The PennDOT service is queried by object ID in pages and grouped by project ID. Zoning is sampled on both sides of each street approximately 66 ft from the centerline; segments outside Philadelphia or without a match remain **Not assessed**. The browser loads local, precomputed GeoJSON and only handles rendering, ranking, review, and interaction.
+The public sources are downloaded and spatially joined ahead of time. The PennDOT service is queried by object ID in pages and grouped by project ID. Zoning is sampled on both sides of each street approximately 66 ft from the centerline; segments outside Philadelphia or without a match remain **Not assessed**. High-volume source layers are reduced to matched records before publication. The browser loads local, precomputed GeoJSON and only handles rendering, filtering, ranking, review, and interaction.
+
+Complete Streets, permits, PWD, SEPTA, crashes, floodplain, historic-district, bike-network, and vacancy information are initially **context only**. They support follow-up and review flags but do not change the public screening score. This avoids double-counting safety, treating proximity as committed funding, or mistaking policy and regulatory context for engineering feasibility.
 
 ## Run
 
@@ -73,20 +85,20 @@ Pushes to `main` automatically build and deploy the site through `.github/workfl
 https://smileshey.github.io/Philly-implementation-priority-map/
 ```
 
-Push to `main` or run the workflow manually from the **Actions** tab. The deployment workflow configures Pages automatically; if **Settings → Pages** only shows **Add domain**, no additional source selection is required.
+Before the first deployment, open the repository-specific **Settings → Pages** page (not the Pages section of your personal account settings) and set **Build and deployment → Source** to **GitHub Actions**. Then push to `main` or run the workflow manually from the **Actions** tab. Seeing only **Add domain** means you are likely on the account-level Pages settings page.
 
 Planner reviews remain in each viewer's browser storage; GitHub Pages does not provide a shared review database.
 
 ## Refresh public implementation data
 
-To download the current Vision Zero, PennDOT, EPA, and Philadelphia zoning data and rebuild the browser-ready files:
+To download the current public implementation context and rebuild the browser-ready files:
 
 ```bash
 nvm use
 npm run prepare:data
 ```
 
-This is the only step that performs spatial proximity calculations. It writes the enriched segment and overlay layers to `public/data/`.
+This is the only step that performs spatial proximity calculations. It writes the enriched segment, compact matched overlays, and `data_manifest.json` provenance report to `public/data/`. Node 20+ is required.
 
 ## Rebuild the trimmed SoP file
 
@@ -102,9 +114,20 @@ The supplied file is reduced from roughly 46 MB to a much smaller client layer. 
 
 The **application code** can be open-source. Before committing the supplied State of Place data to a public repository, confirm with State of Place that redistribution of that dataset is permitted. A safe deployment pattern is to keep the code public and inject the SoP GeoJSON during build/deployment if the data itself is restricted.
 
-## Recommendation method
+## Screening method
 
-`scripts/prepare_implementation_data.mjs` uses transparent, versioned screening rules (`prototype-screening-v2`) to select a primary follow-up action. HIN and influenceable capital-project matches favor safety or project-owner review; Brownfields produce low-confidence redevelopment leads; Superfund evidence adds a due-diligence warning. The rules do not invent a treatment, accessible funding, engineering feasibility, cost, effort, or schedule. Evidence and source links are exposed in each segment popup.
+`scripts/prepare_implementation_data.mjs` uses transparent, versioned screening rules (`prototype-screening-v3`) to select a primary follow-up action. HIN and influenceable capital-project matches favor safety or project-owner review; Brownfields produce low-confidence redevelopment leads; Superfund evidence adds a due-diligence warning. Phase 5 context can surface additional reasons to investigate but is not automatically scored. The rules do not invent a treatment, accessible funding, engineering feasibility, cost, effort, or schedule. Evidence, match methods, limitations, refresh dates, and source links are exposed in the app.
+
+## Phase 5 context rules
+
+- Street labels use the nearest named street within approximately 131 ft and a different nearby street as an approximate cross street.
+- Complete Streets matches within 164 ft are policy evidence only.
+- The permit pipeline uses issued, potentially substantial construction permits from a rolling three-year window and matches them within 250 ft.
+- PWD projects match within approximately 328 ft; planned and active stages are distinguished, and neither is scored automatically.
+- SEPTA stops within 500 ft describe access rather than capital readiness.
+- Pedestrian and bicycle crashes within 164 ft explain safety context but are not scored separately from the HIN.
+- FEMA floodplain and historic-district midpoint matches, industrial/special-purpose zoning, and Superfund evidence create review flags rather than automatic penalties.
+- Property parcels and DVRPC traffic counts remain catalogued future sources because the current public records do not yet support a defensible automated feasibility score.
 
 ## v0.3 performance update
 
