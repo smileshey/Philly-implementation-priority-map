@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { SopFeature, Weights, ZoningLens } from './types';
 import TopSegments from './top_segments';
 
@@ -67,7 +67,9 @@ export default function SliderWidget({
   onRecalculate,
   onReset,
   resultCount,
-  top
+  top,
+  reviewedIds,
+  onSelectCandidate
 }: {
   started: boolean;
   ready: boolean;
@@ -86,7 +88,10 @@ export default function SliderWidget({
   onReset: () => void;
   resultCount: number;
   top: SopFeature[];
+  reviewedIds: Set<string>;
+  onSelectCandidate: (segment: SopFeature) => void;
 }) {
+  const [workflowStep, setWorkflowStep] = useState<'criteria' | 'candidates'>('criteria');
   const update = (field: keyof Weights, value: number) => onWeights({ ...weights, [field]: value });
   const presetButton = (preset: WeightPreset, label: string) => (
     <button
@@ -113,8 +118,10 @@ export default function SliderWidget({
         </section>
       ) : (
       <div className="priority-controls">
+      {workflowStep === 'criteria' ? (
+      <section className="priority-workflow-step" aria-labelledby="priority-criteria-title">
       <div className="slider-widget-header">
-        <div className="slider-widget-title">What Should Drive Priority?</div>
+        <div className="slider-widget-title" id="priority-criteria-title">What Should Drive Priority?</div>
       </div>
       <div className="slider-divider" />
       <div className="preset-copy">
@@ -156,13 +163,6 @@ export default function SliderWidget({
         </div>
         <small>When multiple filters are selected, candidates must meet all of them.</small>
       </details>
-      <label className="review-score-toggle">
-        <input type="checkbox" checked={applyPlannerAdjustments} onChange={(event) => onApplyPlannerAdjustments(event.target.checked)} />
-        <span>
-          <strong>Use planner-review adjustments</strong>
-          <small>Off by default. Public screening and review-adjusted scores remain visible separately.</small>
-        </span>
-      </label>
       <details className="advanced-weighting">
         <summary>Advanced weighting{activePreset === 'custom' ? ' — Custom active' : ''}</summary>
         <p className="advanced-weighting-help">Moving any slider switches from the preset rule to a custom weighted score.</p>
@@ -188,13 +188,28 @@ export default function SliderWidget({
         </div>
       </details>
       <div className="slider-actions">
-        <button className="slider-recalculate-button" onClick={onRecalculate}>Recalculate</button>
+        <button className="slider-recalculate-button" onClick={() => { onRecalculate(); setWorkflowStep('candidates'); }}>Calculate &amp; Review</button>
         <button className="slider-reset-button" onClick={onReset}>Reset</button>
       </div>
-      <div className="slider-divider" />
-      <div className="candidate-heading"><div className="slider-widget-title">Priority follow-up candidates</div><span>{resultCount.toLocaleString()} shown</span></div>
-      <TopSegments segments={top} />
-      {resultCount === 0 && <p className="empty-candidates">No segments meet every selected filter.</p>}
+      </section>
+      ) : (
+      <section className="priority-workflow-step priority-candidates" aria-labelledby="priority-candidates-title">
+        <span className="priority-intro-kicker">Next Step</span>
+        <h2 id="priority-candidates-title">Review Priority Candidates</h2>
+        <p className="candidate-instructions">Select a candidate to document coordination, feasibility, funding leads, and professional estimates.</p>
+        <div className="candidate-heading"><strong>Top Candidates</strong><span>{resultCount.toLocaleString()} matching segments</span></div>
+        <TopSegments segments={top} reviewedIds={reviewedIds} onSelect={onSelectCandidate} />
+        {resultCount === 0 && <p className="empty-candidates">No segments meet every selected filter. Adjust the priorities or filters and try again.</p>}
+        <label className="review-score-toggle">
+          <input type="checkbox" checked={applyPlannerAdjustments} onChange={(event) => onApplyPlannerAdjustments(event.target.checked)} />
+          <span>
+            <strong>Apply Saved Review Adjustments</strong>
+            <small>Optional. This reranks candidates using documented coordination stages and feasibility findings.</small>
+          </span>
+        </label>
+        <button className="candidate-back-button" type="button" onClick={() => setWorkflowStep('criteria')}>← Adjust Priorities</button>
+      </section>
+      )}
       </div>
       )}
     </div>

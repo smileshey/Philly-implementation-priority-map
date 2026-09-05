@@ -535,6 +535,7 @@ function App() {
 
   const displayedSop = useMemo(() => scoredSop ? filterSegments(scoredSop, filters, reviews) : null, [scoredSop, filters, reviews]);
   const top = useMemo(() => (hasStarted && displayedSop ? topSegments(displayedSop) : []), [hasStarted, displayedSop]);
+  const reviewedIds = useMemo(() => new Set(Object.keys(reviews)), [reviews]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -809,6 +810,8 @@ function App() {
         onReset={reset}
         resultCount={displayedSop?.features.length ?? 0}
         top={top}
+        reviewedIds={reviewedIds}
+        onSelectCandidate={setSelectedSegment}
       />
       {hasStarted && <div className="legend-container">
         <div className="legend-title">Screening Priority</div>
