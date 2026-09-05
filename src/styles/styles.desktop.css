@@ -1,5 +1,16 @@
 /* Desktop layout deliberately mirrors the existing Seattle Walkability UI. */
 .slider-widget-container { position: absolute; bottom: 30px; left: 20px; z-index: 1002; width: 355px; max-width: calc(100vw - 40px); max-height:calc(100vh - 105px); overflow-y:auto; box-sizing:border-box; background: rgba(255,255,255,.94); border-radius: 16px; padding: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.16); border: 1px solid rgba(0,0,0,.1); display: flex; flex-direction: column; }
+.priority-intro { display:flex; flex-direction:column; gap:10px; padding:4px 2px 2px; }
+.priority-intro-kicker { color:#17635d; font-size:.62rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.priority-intro h2 { margin:0; color:#172328; font-size:1.18rem; line-height:1.15; }
+.priority-intro p { margin:0; color:#46565d; font-size:.7rem; line-height:1.45; }
+.priority-intro .priority-intro-note { color:#6a767b; font-size:.61rem; }
+.priority-start-button { margin-top:5px; padding:11px 16px; border:0; border-radius:7px; background:#17635d; color:#fff; font-family:inherit; font-size:.78rem; font-weight:800; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,.16); }
+.priority-start-button:hover,.priority-start-button:focus-visible { background:#238171; }
+.priority-start-button:disabled { background:#7f918d; cursor:wait; }
+.priority-controls { display:flex; min-height:0; flex-direction:column; animation:priority-card-flip-in .42s ease-out both; backface-visibility:hidden; transform-origin:center; }
+@keyframes priority-card-flip-in { from { opacity:.2; transform:perspective(850px) rotateY(-88deg); } to { opacity:1; transform:perspective(850px) rotateY(0); } }
+@media (prefers-reduced-motion: reduce) { .priority-controls { animation:none; } }
 .slider-widget-header { display:flex; align-items:center; justify-content:space-between; }
 .slider-widget-title { font-weight:bold; font-size:.8rem; }
 .slider-divider { width:100%; height:1px; background:#ddd; margin:10px 0; }
@@ -46,6 +57,7 @@
 .layer-swatch { display:inline-block; width:15px; height:4px; flex:0 0 auto; }
 .layer-swatch.sop { background:linear-gradient(90deg,#2c7bb6,#d7191c); }
 .layer-swatch.hin { background:rgba(17,17,17,.35); }
+.layer-swatch.zoning { height:7px; background:linear-gradient(90deg,#4daf4a 0 25%,#ff9f1c 25% 50%,#7b5ea7 50% 75%,#607d8b 75%); }
 .layer-swatch.complete-streets { background:#00897b; border-top:1px dashed #fff; }
 .layer-swatch.bike { background:#3f8d4e; border-top:1px dashed #fff; }
 .layer-icon { display:inline-flex; width:17px; height:17px; flex:0 0 auto; align-items:center; justify-content:center; color:#fff; font-size:9px; font-weight:bold; border:2px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.2); }

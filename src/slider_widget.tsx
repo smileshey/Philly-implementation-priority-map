@@ -51,6 +51,9 @@ function SliderRow({
 }
 
 export default function SliderWidget({
+  started,
+  ready,
+  onStart,
   weights,
   activePreset,
   zoningLens,
@@ -66,6 +69,9 @@ export default function SliderWidget({
   resultCount,
   top
 }: {
+  started: boolean;
+  ready: boolean;
+  onStart: () => void;
   weights: Weights;
   activePreset: WeightPreset | 'custom';
   zoningLens: ZoningLens;
@@ -94,7 +100,19 @@ export default function SliderWidget({
   );
 
   return (
-    <div className="slider-widget-container">
+    <div className={`slider-widget-container${started ? ' is-started' : ' is-intro'}`}>
+      {!started ? (
+        <section className="priority-intro" aria-labelledby="priority-intro-title">
+          <span className="priority-intro-kicker">Start Here</span>
+          <h2 id="priority-intro-title">Explore Priority Opportunities</h2>
+          <p>Use State of Place need, safety urgency, and coordination opportunities to identify street segments worth investigating.</p>
+          <p className="priority-intro-note">This is a screening tool. It does not select, design, fund, or approve a project.</p>
+          <button className="priority-start-button" type="button" onClick={onStart} disabled={!ready}>
+            {ready ? 'Start Here' : 'Loading Data…'}
+          </button>
+        </section>
+      ) : (
+      <div className="priority-controls">
       <div className="slider-widget-header">
         <div className="slider-widget-title">What Should Drive Priority?</div>
       </div>
@@ -177,6 +195,8 @@ export default function SliderWidget({
       <div className="candidate-heading"><div className="slider-widget-title">Priority follow-up candidates</div><span>{resultCount.toLocaleString()} shown</span></div>
       <TopSegments segments={top} />
       {resultCount === 0 && <p className="empty-candidates">No segments meet every selected filter.</p>}
+      </div>
+      )}
     </div>
   );
 }

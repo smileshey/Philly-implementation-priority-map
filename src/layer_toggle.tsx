@@ -5,6 +5,7 @@ export type LayerVisibility = {
   hin: boolean;
   capital: boolean;
   environmental: boolean;
+  zoning: boolean;
   completeStreets: boolean;
   development: boolean;
   pwd: boolean;
@@ -31,7 +32,8 @@ export default function LayerToggle({
         <label><input type="checkbox" checked={visibility.environmental} onChange={() => toggle('environmental')} /><span className="layer-icon brownfield">B</span><span className="layer-icon superfund">S</span> Brownfield / Superfund</label>
         <details className="context-layer-group">
           <summary>Planning Support Layers</summary>
-          <small className="context-layer-note">Supporting evidence—not included in the priority score.</small>
+          <small className="context-layer-note">Supporting evidence; only an optional zoning lens can affect the score.</small>
+          <label><input type="checkbox" checked={visibility.zoning} onChange={() => toggle('zoning')} /><span className="layer-swatch zoning" /> Zoning context</label>
           <label><input type="checkbox" checked={visibility.completeStreets} onChange={() => toggle('completeStreets')} /><span className="layer-swatch complete-streets" /> Complete Streets</label>
           <label><input type="checkbox" checked={visibility.development} onChange={() => toggle('development')} /><span className="layer-icon development">D</span> Development permits</label>
           <label><input type="checkbox" checked={visibility.pwd} onChange={() => toggle('pwd')} /><span className="layer-icon pwd">W</span> PWD projects</label>

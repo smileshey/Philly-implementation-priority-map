@@ -413,6 +413,26 @@ function addSourceAndLayers(map: MapLibreMap, sop: SopCollection, external: Exte
   if (!map.hasImage('transit-marker')) map.addImage('transit-marker', markerImage('T', '#253b80', 'circle'), { pixelRatio: 2 });
   if (!map.hasImage('crash-marker')) map.addImage('crash-marker', markerImage('!', '#b33a3a', 'triangle'), { pixelRatio: 2 });
 
+  if (!map.getLayer('zoning-context-lines')) {
+    map.addLayer({
+      id: 'zoning-context-lines',
+      type: 'line',
+      source: 'sop',
+      filter: ['!=', ['get', 'zoning_primary_group'], null],
+      paint: {
+        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 10],
+        'line-opacity': 0.42,
+        'line-color': [
+          'match', ['get', 'zoning_primary_group'],
+          'Residential / mixed-use', '#4daf4a',
+          'Commercial / mixed-use', '#ff9f1c',
+          'Industrial / mixed-use', '#7b5ea7',
+          'Special purpose', '#607d8b',
+          '#9e9e9e'
+        ]
+      }
+    });
+  }
   if (!map.getLayer('sop-lines')) {
     map.addLayer({
       id: 'sop-lines',
@@ -462,6 +482,7 @@ function applyLayerVisibility(map: MapLibreMap, visibility: LayerVisibility) {
     ['hin', ['hin-lines']],
     ['capital', ['capital-lines', 'capital-icons']],
     ['environmental', ['brownfield-icons', 'superfund-icons']],
+    ['zoning', ['zoning-context-lines']],
     ['completeStreets', ['complete-streets-lines']],
     ['development', ['development-icons']],
     ['pwd', ['pwd-lines', 'pwd-icons']],
@@ -501,18 +522,19 @@ function App() {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [activePreset, setActivePreset] = useState<WeightPreset | 'custom'>('balanced');
   const [zoningLens, setZoningLens] = useState<ZoningLens>('citywide');
+  const [hasStarted, setHasStarted] = useState(false);
   const [applyPlannerAdjustments, setApplyPlannerAdjustments] = useState(false);
   const [filters, setFilters] = useState<ScreeningFilters>(EMPTY_FILTERS);
   const [visibility, setVisibility] = useState<LayerVisibility>({
     sop: true, hin: false, capital: false, environmental: false,
-    completeStreets: false, development: false, pwd: false, transit: false, crashes: false, bike: false
+    zoning: false, completeStreets: false, development: false, pwd: false, transit: false, crashes: false, bike: false
   });
   const [infoPanel, setInfoPanel] = useState<'how' | 'data' | null>(null);
   const [reviews, setReviews] = useState<PlannerReviewStore>(() => loadPlannerReviews());
   const [selectedSegment, setSelectedSegment] = useState<SopFeature | null>(null);
 
   const displayedSop = useMemo(() => scoredSop ? filterSegments(scoredSop, filters, reviews) : null, [scoredSop, filters, reviews]);
-  const top = useMemo(() => (displayedSop ? topSegments(displayedSop) : []), [displayedSop]);
+  const top = useMemo(() => (hasStarted && displayedSop ? topSegments(displayedSop) : []), [hasStarted, displayedSop]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -558,6 +580,13 @@ function App() {
     const render = () => {
       addSourceAndLayers(map, displayedSop, external);
       applyLayerVisibility(map, visibility);
+      map.setPaintProperty('sop-lines', 'line-color', hasStarted ? [
+        'interpolate', ['linear'], ['coalesce', ['get', 'priority_score'], ['get', 'need_score'], 0],
+        0, '#2c7bb6',
+        0.5, '#ffffbf',
+        1, '#d7191c'
+      ] : '#477f78');
+      map.setPaintProperty('sop-lines', 'line-opacity', hasStarted ? 0.82 : 0.58);
       (map.getSource('sop') as GeoJSONSource | undefined)?.setData(displayedSop);
       (map.getSource('hin') as GeoJSONSource | undefined)?.setData(external.hin);
       (map.getSource('capital') as GeoJSONSource | undefined)?.setData(external.capital);
@@ -596,7 +625,7 @@ function App() {
       });
     };
     if (map.isStyleLoaded()) render(); else map.once('load', render);
-  }, [displayedSop, external, top, visibility, reviews]);
+  }, [displayedSop, external, top, visibility, reviews, hasStarted]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -760,6 +789,12 @@ function App() {
         </section>
       )}
       <SliderWidget
+        started={hasStarted}
+        ready={Boolean(baseSop)}
+        onStart={() => {
+          setHasStarted(true);
+          recalculate();
+        }}
         weights={weights}
         activePreset={activePreset}
         zoningLens={zoningLens}
@@ -775,11 +810,11 @@ function App() {
         resultCount={displayedSop?.features.length ?? 0}
         top={top}
       />
-      <div className="legend-container">
+      {hasStarted && <div className="legend-container">
         <div className="legend-title">Screening Priority</div>
         <div className="legend-gradient" />
         <div className="legend-labels"><span>Lower</span><span>Higher</span></div>
-      </div>
+      </div>}
       <LayerToggle visibility={visibility} onChange={setVisibility} />
       {selectedSegment && (
         <PlannerReviewPanel
