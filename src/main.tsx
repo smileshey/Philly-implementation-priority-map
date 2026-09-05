@@ -17,6 +17,7 @@ import PlannerReviewPanel, {
 import { loadDataManifest, loadExternalData, loadSopData } from './data';
 import { baseCoordinationScore, recalculatePriority, topSegments, type CoordinationOverrides } from './scoring';
 import { segmentMidpoint } from './geometry';
+import { needComponentProfile, ordinal, relativeNeedDrivers, streetViewUrl } from './need_explanation';
 import type { DataManifest, ExternalData, SopCollection, SopFeature, Weights, ZoningLens } from './types';
 
 const PRESET_WEIGHTS: Record<WeightPreset, Weights> = {
@@ -294,6 +295,18 @@ function plannerCoordinationOverrides(reviews: PlannerReviewStore, sop: SopColle
 
 function segmentPopupHtml(feature: SopFeature, review?: PlannerReview): string {
   const p = feature.properties;
+  const needProfile = needComponentProfile(p);
+  const needDrivers = relativeNeedDrivers(p);
+  const streetViewHref = streetViewUrl(p);
+  const componentRows = needProfile.map((component) => `<div class="need-component-row">
+    <span>${escapeHtml(component.label)}</span>
+    <span class="need-component-track"><i style="width:${Math.round(component.score)}%"></i></span>
+    <b>${Math.round(component.score)}</b>
+    <small>${component.percentile == null ? 'Peer rank unavailable' : `${ordinal(component.percentile)} percentile`}</small>
+  </div>`).join('');
+  const driverSummary = needDrivers.length
+    ? needDrivers.map((component) => `${escapeHtml(component.label)} (${ordinal(component.percentile ?? 0)} percentile)`).join(' and ')
+    : 'Relative indicators are unavailable';
   const hinEvidence = (p.hin_signal ?? 0) > 0
     ? `Matches the High Injury Network (${feet(p.hin_distance_ft)})`
     : 'No High Injury Network match within 82 ft';
@@ -342,6 +355,13 @@ function segmentPopupHtml(feature: SopFeature, review?: PlannerReview): string {
       <span>Screening priority <b>${Math.round((p.priority_score ?? 0) * 100)}</b></span>
     </div>
     <div class="score-comparison"><span>Public screening <b>${publicScore}</b></span><span>→</span><span>Review-adjusted <b>${adjustedScore}</b></span><small>${scoreDelta === 0 ? 'No review adjustment' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} points from documented review`}</small></div>
+    <details class="need-explanation" open>
+      <summary>Why Is Need High?</summary>
+      <p>The supplied SoP composite score is ${Math.round(p.SoPIndex8Norm)} / 100, producing a need score of ${Math.round((p.need_score ?? 0) * 100)} / 100.</p>
+      <div class="need-component-list">${componentRows}</div>
+      <p><strong>Lowest relative indicators:</strong> ${driverSummary}.</p>
+      <small>Component scores and percentiles are diagnostic comparisons with the supplied segment dataset—not an exact decomposition of the SoP composite formula.</small>
+    </details>
     <p>${escapeHtml(p.recommendation_action ?? 'Identify a viable implementation pathway.')}</p>
     <div class="recommendation-badges">
       <span>Impact: ${escapeHtml(p.recommendation_impact ?? '—')}</span>
@@ -385,6 +405,7 @@ function segmentPopupHtml(feature: SopFeature, review?: PlannerReview): string {
         <dt>Zoning method</dt><dd>${escapeHtml(p.zoning_context_basis ?? 'Not assessed')} · <a href="${SOURCE_URLS.zoning}" target="_blank" rel="noreferrer">City data ↗</a></dd>
       </dl>
     </details>
+    ${streetViewHref ? `<a class="street-view-link" href="${streetViewHref}" target="_blank" rel="noreferrer">Open Street View ↗</a>` : ''}
     <button class="planner-review-launch" type="button">${review ? 'Update planner review' : 'Start planner review'}</button>
     <small>Rule-generated screening result (${escapeHtml(p.recommendation_method ?? 'prototype')}); it does not select a project or confirm engineering feasibility, project scope, funding availability, cost, or schedule.</small>
   </div>`;

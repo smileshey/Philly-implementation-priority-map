@@ -78,6 +78,14 @@
   color: #164f4b;
 }
 
+.planner-review-segment-context > p { margin:6px 0; color:#50635f; font-size:.72rem; line-height:1.4; }
+.planner-review-segment-context > small { display:block; color:#687873; font-size:.65rem; line-height:1.4; }
+.planner-priority-factors { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+.planner-priority-factors span { padding:7px 4px; border-radius:6px; background:#edf3f2; color:#4f615d; font-size:.61rem; text-align:center; }
+.planner-priority-factors strong { display:block; margin-top:2px; color:#174f47; font-size:1rem; }
+.planner-review-segment-context .need-component-row { grid-template-columns:135px minmax(90px,1fr) 28px; font-size:.68rem; }
+.planner-review-segment-context .need-component-row > small { font-size:.58rem; }
+
 .planner-review-score-summary > div {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

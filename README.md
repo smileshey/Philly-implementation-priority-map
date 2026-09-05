@@ -41,6 +41,8 @@ The map opens with a short Start Here explanation and a neutral SoP segment laye
 
 Each segment receives a human-readable street label, a transparent follow-up action, and an evidence trail. Treatment feasibility, implementation effort, cost, and timing remain **Not assessed** until a planner or engineer documents them in the segment review. Reviews are stored in that browser with `localStorage`; they can record coordination strategy, engagement, owner/contact, funding leads, treatment, constraints, professional estimates and sources, and reviewer/date. Funding selections are leads to investigate—not eligibility or funding commitments.
 
+The segment popup and planner review include a diagnostic **Why Is Need High?** profile. It shows the five retained normalized SoP component fields and identifies the two lowest component percentiles relative to the supplied segment dataset. This is a relative explanation, not an exact decomposition of the composite index; exact attribution requires the official SoP formula and codebook. An **Open Street View** link uses the segment midpoint to request the closest available Google panorama in a new tab. Imagery availability, location, and capture date are controlled by Google and may not represent current conditions.
+
 Planner reviews no longer change the default ranking invisibly. The app calculates and displays both a **public screening score** and a **review-adjusted score**. Review adjustments are off by default and can be explicitly enabled. The numerical adjustment rules remain prototype assumptions pending sponsor validation.
 
 ## Public sources

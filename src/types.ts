@@ -10,10 +10,15 @@ export type SopProperties = {
   midpoint_longitude?: number;
   SoPIndex8Norm: number;
   PEDS5Norm: number;
+  PEDS5Percentile?: number | null;
   SAFENorm: number;
+  SAFEPercentile?: number | null;
   TRAFFIC6Norm: number;
+  TRAFFIC6Percentile?: number | null;
   CONN7Norm: number;
+  CONN7Percentile?: number | null;
   DENS3Norm: number;
+  DENS3Percentile?: number | null;
   need_score?: number;
   safety_score?: number;
   hin_signal?: number;

@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import type { SopFeature } from './types';
+import { needComponentProfile, ordinal, relativeNeedDrivers, streetViewUrl } from './need_explanation';
 import './styles/planner_review.css';
 
 export type CoordinationStrategy =
@@ -173,6 +174,9 @@ export default function PlannerReviewPanel({
   const descriptionId = useId();
   const estimateWarningId = useId();
   const segmentId = selected.properties.location_id;
+  const needProfile = needComponentProfile(selected.properties);
+  const needDrivers = relativeNeedDrivers(selected.properties);
+  const streetViewHref = streetViewUrl(selected.properties);
   const panelRef = useRef<HTMLElement>(null);
   const initialFocusRef = useRef<HTMLSelectElement>(null);
   const onCloseRef = useRef(onClose);
@@ -287,6 +291,29 @@ export default function PlannerReviewPanel({
         </header>
 
         <form className="planner-review-form" onSubmit={handleSubmit}>
+          <section className="planner-review-segment-context">
+            <h3>Why this segment?</h3>
+            <div className="planner-priority-factors">
+              <span>Need <strong>{Math.round((selected.properties.need_score ?? 0) * 100)}</strong></span>
+              <span>Safety <strong>{Math.round((selected.properties.safety_score ?? selected.properties.hin_signal ?? 0) * 100)}</strong></span>
+              <span>Coordination <strong>{Math.round((selected.properties.coordination_opportunity_signal ?? 0) * 100)}</strong></span>
+              <span>Priority <strong>{Math.round((selected.properties.priority_score ?? 0) * 100)}</strong></span>
+            </div>
+            <p>A supplied SoP score of <strong>{Math.round(selected.properties.SoPIndex8Norm)}</strong> produces a Street Need score of <strong>{Math.round((selected.properties.need_score ?? 0) * 100)}</strong>.</p>
+            <div className="need-component-list">
+              {needProfile.map((component) => (
+                <div className="need-component-row" key={component.label}>
+                  <span>{component.label}</span>
+                  <span className="need-component-track"><i style={{ width: `${Math.round(component.score)}%` }} /></span>
+                  <b>{Math.round(component.score)}</b>
+                  <small>{component.percentile == null ? 'Peer rank unavailable' : `${ordinal(component.percentile)} percentile`}</small>
+                </div>
+              ))}
+            </div>
+            <p><strong>Lowest relative indicators:</strong> {needDrivers.map((component) => `${component.label} (${ordinal(component.percentile ?? 0)} percentile)`).join(' and ') || 'Unavailable'}.</p>
+            <small>Diagnostic comparison with the supplied segment dataset; not an exact decomposition of the SoP formula.</small>
+            {streetViewHref && <a className="street-view-link" href={streetViewHref} target="_blank" rel="noreferrer">Open Street View ↗</a>}
+          </section>
           <section className="planner-review-score-summary">
             <h3>Transparent score comparison</h3>
             <div>

@@ -1,4 +1,5 @@
 import type { DataManifest, ExternalData, LineCollection, PointCollection, SopCollection } from './types';
+import { addNeedDiagnostics } from './need_explanation';
 
 async function fetchGeoJSON<T>(url: string): Promise<T> {
   const response = await fetch(url);
@@ -7,7 +8,7 @@ async function fetchGeoJSON<T>(url: string): Promise<T> {
 }
 
 export async function loadSopData(): Promise<SopCollection> {
-  return fetchGeoJSON<SopCollection>('./data/implementation_segments.geojson');
+  return addNeedDiagnostics(await fetchGeoJSON<SopCollection>('./data/implementation_segments.geojson'));
 }
 
 export async function loadExternalData(): Promise<ExternalData> {
